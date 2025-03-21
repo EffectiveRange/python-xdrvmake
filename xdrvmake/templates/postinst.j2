@@ -1,0 +1,9 @@
+#!/bin/bash
+if [[ -z "$(grep {{ modulename }} /etc/modules)"  ]];
+then 
+    echo "Adding {{ modulename }} to /etc/modules ..."
+    echo '{{ modulename }}' >> /etc/modules
+    depmod || true
+fi
+
+echo "Please add 'dtoverlay={{ project }}' if needed, then reboot ..."

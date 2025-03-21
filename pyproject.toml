@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cross_driver_configurator"
+description = "Generating GNU Make files for building out-of-tree kernel modules using the Effective Range devcontainers"
+# dynamic = ["version"]
+version = "0.1.0"
+dependencies = ["Jinja2","pyyaml"]
+authors = [
+  {name = "Effective Range Kft", email = "info@effective-range.com"},
+]
+maintainers = [
+  {name = "Effective Range Kft", email = "info@effective-range.com"},
+]
+license = {file = "LICENSE"}
+readme = "README.md"
+
+# [tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+include = ["xdrvmake*"]
+
+[tool.setuptools.package-data]
+xdrvmake = ["templates/*.j2"]
+
+[project.scripts]
+xdrvmake = "xdrvmake.builder:main"
