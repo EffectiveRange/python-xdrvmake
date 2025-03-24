@@ -17,6 +17,7 @@ def get_args():
         type=str,
         help="path to project roo directory containing a'drivercfg.yaml' file",
         default=os.getcwd(),
+        nargs="?",
     )
     parser.add_argument(
         "--build",
