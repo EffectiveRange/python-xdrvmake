@@ -9,7 +9,7 @@ KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
-{{ project }}_$(VERSION)-1_$(ARCH).deb : driver {{ project }}.dtbo staging/DEBIAN/*
+{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} {{ project }}.dtbo staging/DEBIAN/*
 	mkdir -p staging//lib/modules/$(KVER)
 	if [ "$(DISTRO)" = "bullseye" ]; then \
 		mkdir -p staging//boot/overlays/; \
@@ -20,6 +20,8 @@ all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	fi
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
+{% if not dts_only %}
+
 staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile
 	mkdir -p staging/lib/modules/$(KVER)/
 	rsync --delete -r  {{ projectroot }}/{{ sourcedir }}/ /tmp/drv-{{ project }}
@@ -28,6 +30,8 @@ staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}
 
 driver: staging/lib/modules/$(KVER)/{{ modulename }}.ko
 	@true
+
+{% endif %}
 
 clean:
 	rm -rf staging/boot/ staging/lib/ 
@@ -46,7 +50,7 @@ deploy: all
 	rsync -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" -avhz --progress {{ project }}_$(VERSION)-1_$(ARCH).deb $(TARGET):/tmp/
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo dpkg --force-all -i  /tmp/{{ project }}_$(VERSION)-1_$(ARCH).deb
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo sed -ri '/^\s*dtoverlay={{ project }}/d' /boot/config.txt
-	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "echo 'dtoverlay={{ project }}:battery_diag=true' | sudo tee -a /boot/config.txt"
+	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "echo 'dtoverlay={{ project }}' | sudo tee -a /boot/config.txt"
 
 quickdeploy: driver
 	scp {{ project }}/lib/modules/$(KVER)/{{ modulename }}.ko $(TARGET):/tmp/
