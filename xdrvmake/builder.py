@@ -16,7 +16,6 @@ def get_args():
         "projectdir",
         type=str,
         help="path to project roo directory containing a'drivercfg.yaml' file",
-        required=False,
         default=os.getcwd(),
     )
     parser.add_argument(
