@@ -89,7 +89,7 @@ def create_stating(args: argparse.Namespace, data: dict):
 
 def get_kernel_vers(args: argparse.Namespace) -> list[str]:
     if args.kernel_ver is not None:
-        return [os.path.sep.join((args.kernel_root, ver)) for ver in args.kernel_ver]
+        return args.kernel_ver
 
     return [
         entry
