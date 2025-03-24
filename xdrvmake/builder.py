@@ -66,7 +66,7 @@ def get_template(name: str) -> jinja2.Template:
 
 def set_globals(tmpl: jinja2.Template, data: dict):
     tmpl.globals["project"] = data["project"]
-    tmpl.globals["modulename"] = data["modulename"]
+    tmpl.globals["modulename"] = data.get("modulename", None)
     tmpl.globals["sourcedir"] = data.get("sourcedir", "src")
     tmpl.globals["kbuild_flags"] = data.get("kbuild_flags", "")
     tmpl.globals["maintainer"] = data["maintainer"]
@@ -79,13 +79,22 @@ def set_globals(tmpl: jinja2.Template, data: dict):
 
 def create_stating(args: argparse.Namespace, data: dict):
     os.makedirs(f"staging/DEBIAN", exist_ok=True)
-    for file in ("control", "postinst", "postrm", "preinst"):
-        tmpl = get_template(file)
-        set_globals(tmpl, data)
-        with open(f"staging/DEBIAN/{file}", "w") as f:
-            f.write(tmpl.render())
-        if file != "control":
-            os.chmod(f"staging/DEBIAN/{file}", 0o755)
+    files = (
+        ("control", "postinst", "postrm", "preinst")
+        if not data["dts_only"]
+        else ("control", "preinst")
+    )
+    for file in files:
+        render_debian_file(data, file)
+
+
+def render_debian_file(data, file):
+    tmpl = get_template(file)
+    set_globals(tmpl, data)
+    with open(f"staging/DEBIAN/{file}", "w") as f:
+        f.write(tmpl.render())
+    if file != "control":
+        os.chmod(f"staging/DEBIAN/{file}", 0o755)
 
 
 def get_kernel_vers(args: argparse.Namespace) -> list[str]:

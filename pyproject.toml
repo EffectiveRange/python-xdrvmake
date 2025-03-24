@@ -7,7 +7,7 @@ name = "cross_driver_configurator"
 description = "Generating GNU Make files for building out-of-tree kernel modules using the Effective Range devcontainers"
 # dynamic = ["version"]
 version = "0.1.0"
-dependencies = ["Jinja2","pyyaml"]
+dependencies = ["Jinja2","pyyaml","setuptools"]
 authors = [
   {name = "Effective Range Kft", email = "info@effective-range.com"},
 ]
