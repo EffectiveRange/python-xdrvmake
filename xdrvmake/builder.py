@@ -89,7 +89,7 @@ def create_stating(args: argparse.Namespace, data: dict):
 
 def get_kernel_vers(args: argparse.Namespace) -> list[str]:
     if args.kernel_ver is not None:
-        return args.kernel_ver
+        return [os.path.sep.join((args.kernel_root, ver)) for ver in args.kernel_ver]
 
     return [
         entry
@@ -105,9 +105,9 @@ def build_driver(args: argparse.Namespace):
     start_kernels = kernel_vers[0:-1]
     end_kernel = kernel_vers[-1:]
     for kernel_ver in start_kernels:
-        exec_make(args, kernel_ver, "driver")
+        exec_make(args, kernel_ver.name, "driver")
     for kernel_ver in end_kernel:
-        exec_make(args, kernel_ver, "all")
+        exec_make(args, kernel_ver.name, "all")
 
 
 def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
