@@ -10,7 +10,6 @@ all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
 {{ project }}_$(VERSION)-1_$(ARCH).deb : driver {{ project }}.dtbo staging/DEBIAN/*
-	mkdir -p build
 	mkdir -p staging//lib/modules/$(KVER)
 	if [ "$(DISTRO)" = "bullseye" ]; then \
 		mkdir -p staging//boot/overlays/; \
@@ -22,7 +21,6 @@ all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
 staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile
-	mkdir -p build
 	mkdir -p staging/lib/modules/$(KVER)/
 	rsync --delete -r  {{ projectroot }}/{{ sourcedir }}/ /tmp/drv-{{ project }}
 	schroot -c buildroot -u root -d /tmp/drv-{{ project }} -- make KVER=$(KVER) {{ kbuild_flags }}
