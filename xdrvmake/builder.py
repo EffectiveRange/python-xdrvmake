@@ -105,15 +105,25 @@ def build_driver(args: argparse.Namespace):
     start_kernels = kernel_vers[0:-1]
     end_kernel = kernel_vers[-1:]
     for kernel_ver in start_kernels:
-        out = subprocess.check_output(
-            ["make", "-C", args.build, "driver", f"KVER={kernel_ver}"]
-        )
-        print(out)
+        exec_make(args, kernel_ver, "driver")
     for kernel_ver in end_kernel:
-        out = subprocess.check_output(
-            ["make", "-C", args.build, "all", f"KVER={kernel_ver}"]
+        exec_make(args, kernel_ver, "all")
+
+
+def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
+    popen = subprocess.Popen(
+        ["make", "-C", args.build, target, f"KVER={kernel_ver}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    for line in iter(popen.stdout.readline, b""):
+        print(line.decode(), end="")
+    retcode = popen.wait()
+    popen.stdout.close()
+    if retcode:
+        raise subprocess.CalledProcessError(
+            f"Failed to build {target} for kernel {kernel_ver}"
         )
-        print(out)
 
 
 def main():
