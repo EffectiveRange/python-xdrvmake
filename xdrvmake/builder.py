@@ -92,7 +92,7 @@ def get_kernel_vers(args: argparse.Namespace) -> list[str]:
         return args.kernel_ver
 
     return [
-        entry
+        entry.name
         for entry in os.scandir(args.kernel_root)
         if entry.is_dir() and not entry.name.startswith(".")
     ]
@@ -105,9 +105,9 @@ def build_driver(args: argparse.Namespace):
     start_kernels = kernel_vers[0:-1]
     end_kernel = kernel_vers[-1:]
     for kernel_ver in start_kernels:
-        exec_make(args, kernel_ver.name, "driver")
+        exec_make(args, kernel_ver, "driver")
     for kernel_ver in end_kernel:
-        exec_make(args, kernel_ver.name, "all")
+        exec_make(args, kernel_ver, "all")
 
 
 def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
