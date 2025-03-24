@@ -18,6 +18,7 @@ def get_args():
         help="path to project roo directory containing a'drivercfg.yaml' file",
     )
     parser.add_argument("--build", action="store_true", help="build the driver")
+    parser.add_argument("--arch", type=str, help="target architecture", required=False)
     return parser.parse_args()
 
 
@@ -79,7 +80,7 @@ def create_makefile(data):
 
 def setup_derived_data(args, data):
     data["projectroot"] = pathlib.Path(args.projectdir).absolute()
-    data["architecture"] = get_arch(f"/home/crossbuilder/target/target")
+    data["architecture"] = args.arch or get_arch(f"/home/crossbuilder/target/target")
     if data["version"] == "auto":
         data["version"] = (
             subprocess.check_output(["git", "describe", "--tags", "--always"])

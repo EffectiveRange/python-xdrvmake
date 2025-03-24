@@ -3,7 +3,7 @@ VERSION = $(shell grep Version: staging/DEBIAN/control | cut -d' ' -f2)
 KVER ?= 6.1.21+
 TARGET ?=  $(error TARGET not specified for deploy )
 DISTRO = $(shell grep VERSION_CODENAME= /home/crossbuilder/target/target | cut -d'=' -f2)
-ARCH = $(shell grep TARGET_ARCH= /home/crossbuilder/target/target | cut -d'=' -f2)
+ARCH = {{ architecture }}
 KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
 
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
