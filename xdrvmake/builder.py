@@ -17,8 +17,32 @@ def get_args():
         type=str,
         help="path to project roo directory containing a'drivercfg.yaml' file",
     )
-    parser.add_argument("--build", action="store_true", help="build the driver")
-    parser.add_argument("--arch", type=str, help="target architecture", required=False)
+    parser.add_argument(
+        "--build",
+        help="build the driver using the specified build directory",
+        required=False,
+    )
+
+    parser.add_argument(
+        "--kernel-ver",
+        help="kernel version to build the driver against, if not specified all versions will be built",
+        required=False,
+        nargs="+",
+    )
+
+    parser.add_argument(
+        "--kernel-root",
+        help="path to the kernel modules",
+        required=False,
+        default="/var/chroot/buildroot/lib/modules",
+    )
+
+    parser.add_argument(
+        "--arch",
+        type=str,
+        help="target architecture, if not specified the /home/crossbuilder/target descriptior will be used to determine",
+        required=False,
+    )
     return parser.parse_args()
 
 
@@ -61,8 +85,40 @@ def create_stating(args: argparse.Namespace, data: dict):
             os.chmod(f"staging/DEBIAN/{file}", 0o755)
 
 
+def get_kernel_vers(args: argparse.Namespace) -> list[str]:
+    if args.kernel_ver is not None:
+        return args.kernel_ver
+
+    return [
+        entry
+        for entry in os.scandir(args.kernel_root)
+        if entry.is_dir() and not entry.name.startswith(".")
+    ]
+
+
+def build_driver(args: argparse.Namespace):
+    kernel_vers = get_kernel_vers(args)
+    if not kernel_vers:
+        raise ValueError("No kernel versions found")
+    start_kernels = kernel_vers[0:-1]
+    end_kernel = kernel_vers[-1:]
+    for kernel_ver in start_kernels:
+        out = subprocess.check_output(
+            ["make", "-C", args.build, "driver", f"KVER={kernel_ver}"]
+        )
+        print(out)
+    for kernel_ver in end_kernel:
+        out = subprocess.check_output(
+            ["make", "-C", args.build, "all", f"KVER={kernel_ver}"]
+        )
+        print(out)
+
+
 def main():
     args = get_args()
+    if args.build is not None:
+        build_driver(args)
+        return
 
     with open(f"{args.projectdir}/drivercfg.yaml") as f:
         data: dict = yaml.safe_load(f)
