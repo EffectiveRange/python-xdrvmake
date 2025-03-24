@@ -111,8 +111,9 @@ def build_driver(args: argparse.Namespace):
 
 
 def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
+    cmd = ["make", "-C", args.build, target, f"KVER={kernel_ver}"]
     popen = subprocess.Popen(
-        ["make", "-C", args.build, target, f"KVER={kernel_ver}"],
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -121,9 +122,7 @@ def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
     retcode = popen.wait()
     popen.stdout.close()
     if retcode:
-        raise subprocess.CalledProcessError(
-            f"Failed to build {target} for kernel {kernel_ver}"
-        )
+        raise subprocess.CalledProcessError(retcode, cmd)
 
 
 def main():
