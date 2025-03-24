@@ -52,11 +52,15 @@ deploy: all
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo sed -ri '/^\s*dtoverlay={{ project }}/d' /boot/config.txt
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "echo 'dtoverlay={{ project }}' | sudo tee -a /boot/config.txt"
 
+{% if not dts_only %}
+
 quickdeploy: driver
 	scp {{ project }}/lib/modules/$(KVER)/{{ modulename }}.ko $(TARGET):/tmp/
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo rmmod {{ modulename }} || true"
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo cp /tmp/{{ modulename }}.ko /lib/modules/$(KVER)/
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo modprobe {{ modulename }} || true"
-	
+
+{% endif %}
+
 
 .PHONY: clean all deploy quickdeploy driver

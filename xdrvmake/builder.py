@@ -73,6 +73,7 @@ def set_globals(tmpl: jinja2.Template, data: dict):
     tmpl.globals["description"] = data["description"]
     tmpl.globals["version"] = data["version"]
     tmpl.globals["architecture"] = data["architecture"]
+    tmpl.globals["dts_only"] = data.get("dts_only", False)
     return tmpl
 
 
