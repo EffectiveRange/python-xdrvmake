@@ -1,4 +1,12 @@
 #!/bin/bash
+
+{% if blacklist %}
+if [[ ! -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf ]]
+then
+    echo "blacklist {{ blacklist }}" > /etc/modprobe.d/blacklist-{{ blacklist }}.conf 
+fi
+{% endif %}
+
 if [[ -z "$(grep {{ modulename }} /etc/modules)"  ]];
 then 
     echo "Adding {{ modulename }} to /etc/modules ..."

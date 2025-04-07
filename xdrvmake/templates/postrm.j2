@@ -2,6 +2,11 @@
 echo "Removing module autoload for {{ modulename }} ..."
 sed -ri '/^\s*{{ modulename }}/d' /etc/modules
 
+{% if blacklist %}
+echo "Removing {{ blacklist }} blacklist ..."
+rm -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf
+{% endif %}
+
 
 echo "If {{ project }} driver is not required remove 'dtoverlay={{ project }}' from /boot/config.txt ..."
 
