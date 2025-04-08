@@ -55,7 +55,7 @@ deploy: all
 {% if not dts_only %}
 
 quickdeploy: driver
-	scp {{ project }}/lib/modules/$(KVER)/{{ modulename }}.ko $(TARGET):/tmp/
+	scp staging/lib/modules/$(KVER)/{{ modulename }}.ko $(TARGET):/tmp/
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo rmmod {{ modulename }} || true"
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo cp /tmp/{{ modulename }}.ko /lib/modules/$(KVER)/
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo modprobe {{ modulename }} || true"
