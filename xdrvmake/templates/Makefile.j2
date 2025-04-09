@@ -20,6 +20,12 @@ all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	fi
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
+{% if public_header %}
+staging/usr/include/{{ public_header }}:  {{projectroot}}/{{ sourcedir }}/{{ public_header }}
+	mkdir -p staging/usr/include/
+	cp -vf {{projectroot}}/{{ sourcedir}}/{{ public_header }} staging/usr/include/
+{% endif %}
+
 {% if not dts_only %}
 
 staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile

@@ -75,6 +75,7 @@ def set_globals(tmpl: jinja2.Template, data: dict):
     tmpl.globals["architecture"] = data["architecture"]
     tmpl.globals["dts_only"] = data.get("dts_only", False)
     tmpl.globals["blacklist"] = data.get("blacklist", None)
+    tmpl.globals["public_header"] = data.get("public_header", None)
     return tmpl
 
 
