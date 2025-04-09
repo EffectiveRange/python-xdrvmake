@@ -9,7 +9,7 @@ KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
-{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} {{ project }}.dtbo staging/DEBIAN/*
+{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} {{ project }}.dtbo staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
 	mkdir -p staging//lib/modules/$(KVER)
 	if [ "$(DISTRO)" = "bullseye" ]; then \
 		mkdir -p staging//boot/overlays/; \
