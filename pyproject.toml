@@ -78,3 +78,19 @@ ignore_missing_imports = true
 # Where tests live
 testpaths = ["test"]
 python_files = ["*test.py"]
+
+
+[tool.coverage.run]
+branch = true
+source = ["xdrvmake"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 0
+
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@overload",
+]
