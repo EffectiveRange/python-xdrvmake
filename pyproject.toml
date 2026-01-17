@@ -83,6 +83,7 @@ python_files = ["*test.py"]
 [tool.coverage.run]
 branch = true
 source = ["xdrvmake"]
+relative_files = true
 
 [tool.coverage.report]
 show_missing = true
