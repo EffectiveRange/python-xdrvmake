@@ -72,3 +72,8 @@ module = [
 ]
 ignore_missing_imports = true
 
+
+[tool.pytest.ini_options]
+# Where tests live
+testpaths = ["test"]
+python_files = ["*test.py"]

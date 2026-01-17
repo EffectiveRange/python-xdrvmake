@@ -5,7 +5,7 @@ import re
 import subprocess
 import yaml
 import jinja2
-import pkg_resources
+from importlib.resources import files
 import pathlib
 import os
 import dotenv
@@ -119,16 +119,15 @@ def get_arch(targetfile: str) -> str:
 
 
 def get_template(name: str) -> jinja2.Template:
-    config_path = pkg_resources.resource_filename("xdrvmake", f"templates/{name}.j2")
-    with open(config_path, "r") as f:
-        content = f.read()
+    template_path = files("xdrvmake").joinpath("templates", f"{name}.j2")
+    template_text = template_path.read_text(encoding="utf-8")
     env = jinja2.Environment()
 
     def tuple_format(value, fmt):
         return fmt.format(*value)
 
     env.filters["tuple_format"] = tuple_format
-    return env.from_string(content)
+    return env.from_string(template_text)
 
 
 def set_globals(tmpl: jinja2.Template, data: dict) -> jinja2.Template:
