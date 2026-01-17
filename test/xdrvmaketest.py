@@ -150,7 +150,9 @@ class TestAptKernelVersionParsing(unittest.TestCase):
             "linux-headers-6.12.34+rpt-rpi-v8",
         ]
 
-        computed = compute_kernel_versions_to_install(argparse.Namespace(kernel_ver_count=3), available_versions)
+        computed = compute_kernel_versions_to_install(
+            argparse.Namespace(kernel_ver_count=3), available_versions
+        )
         self.assertEqual(computed, to_install)
 
 
@@ -248,7 +250,7 @@ class TestBuilderUtils(unittest.TestCase):
         from xdrvmake.builder import render_debian_file, create_stating
 
         # Minimal data for template rendering
-        data = {
+        data: dict = {
             "project": "testproj",
             "maintainer": "maint",
             "description": "desc",
@@ -264,9 +266,6 @@ class TestBuilderUtils(unittest.TestCase):
             ],
             "dts_only": False,
         }
-        # Ensure all tuples are exactly two elements
-        for tup in data["min_supported"] + data["max_supported"]:
-            assert len(tup) == 2, f"Tuple {tup} is not length 2"
         with tempfile.TemporaryDirectory() as tmp:
             cwd = os.getcwd()
             os.chdir(tmp)
@@ -302,7 +301,6 @@ class TestBuilderUtils(unittest.TestCase):
     def test_get_args_parsing(self):
         import sys
         from xdrvmake.builder import get_args
-        import types
 
         old_argv = sys.argv
         try:
@@ -334,9 +332,7 @@ class TestBuilderUtils(unittest.TestCase):
         import os
         from xdrvmake.builder import get_kernel_vers
 
-        class Args:
-            kernel_ver = None
-            chroot_root = None
+        Args = argparse.Namespace(kernel_ver=None, chroot_root=None)
 
         with tempfile.TemporaryDirectory() as tmp:
             lib_modules = os.path.join(tmp, "lib", "modules")
@@ -353,7 +349,6 @@ class TestBuilderUtils(unittest.TestCase):
 
     def test_build_driver(self):
         from xdrvmake.builder import build_driver
-        import types
 
         called = []
 
@@ -366,11 +361,8 @@ class TestBuilderUtils(unittest.TestCase):
         old_exec_make = xdrvmake.builder.exec_make
         xdrvmake.builder.exec_make = fake_exec_make
 
-        class Args:
-            kernel_ver = ["v1", "v2", "v3"]
-
         try:
-            build_driver(Args)
+            build_driver(argparse.Namespace(kernel_ver=["v1", "v2", "v3"]))
             # Should call driver for v1, v2 and all for v3
             self.assertEqual(
                 called, [("v1", "driver"), ("v2", "driver"), ("v3", "all")]
@@ -382,7 +374,6 @@ class TestBuilderUtils(unittest.TestCase):
         import tempfile
         import shutil
         import os
-        import types
         import json
         from unittest.mock import patch
 
@@ -398,7 +389,7 @@ class TestBuilderUtils(unittest.TestCase):
             )
 
         # Prepare args
-        args = types.SimpleNamespace(
+        args = argparse.Namespace(
             chroot_root=chroot_root,
             target_dir=target_dir,
             chroot_name="buildroot",
@@ -425,7 +416,8 @@ class TestBuilderUtils(unittest.TestCase):
 
         with patch(
             "xdrvmake.builder.exec_command",
-            return_value="linux-headers-6.1.0-rpi-v8/stable,now 1:6.1.0-1+rpt1 arm64 [installed]\nlinux-headers-6.1.0-rpi-v7/stable,now 1:6.1.0-1+rpt1 arm64 [installed]",
+            return_value="linux-headers-6.1.0-rpi-v8/stable,now 1:6.1.0-1+rpt1 arm64 [installed]\n"
+            "linux-headers-6.1.0-rpi-v7/stable,now 1:6.1.0-1+rpt1 arm64 [installed]",
         ), patch("xdrvmake.builder.apt_update_in_buildroot", return_value=None), patch(
             "xdrvmake.builder.apt_install_kernel_headers_in_buildroot",
             return_value=None,

@@ -13,4 +13,4 @@ exclude =
   dist,
   .eggs,
   *.egg-info
-  test
+extend-ignore = E203,W503

@@ -24,6 +24,7 @@ dev = [
   "pytest",
   "coverage",
   "flake8-pyproject",
+  "black",
 ]
 
 # [tool.setuptools_scm]
@@ -39,7 +40,7 @@ xdrvmake = "xdrvmake.builder:main"
 
 [tool.mypy]
 # What to type-check
-files = ["xdrvmake"]
+files = ["xdrvmake","test"]
 
 # Practical defaults
 warn_unused_configs = true
