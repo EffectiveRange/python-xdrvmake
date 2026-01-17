@@ -522,4 +522,5 @@ class TestBuilderUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # run the tests
     unittest.main()
