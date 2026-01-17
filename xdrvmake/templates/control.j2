@@ -3,7 +3,7 @@ Version: {{ version }}
 Maintainer: {{ maintainer }}
 Architecture: {{ architecture }}
 Description: {{ description }}
-{% if not dts_only %}
+{%- if not dts_only %}
 Breaks: {{ max_supported | map('tuple_format', '{} (>>{})') | join(',') }}
 Depends: {{ min_supported | map('tuple_format', '{} (>={})') | join(',') }}
-{% endif %}
+{%- endif %}
