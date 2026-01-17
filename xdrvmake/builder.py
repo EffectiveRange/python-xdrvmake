@@ -225,6 +225,7 @@ def apt_list_kernel_headers_in_buildroot(
             "root",
             "-d",
             "/",
+            "--",
             "apt",
             "list",
             "-a",
@@ -245,7 +246,10 @@ def apt_install_kernel_headers_in_buildroot(
             "root",
             "-d",
             "/",
+            "--",
             "apt_install",
+            "-y",
+            "--no-install-recommends",
             *packages,
         ]
     )
@@ -301,7 +305,7 @@ def install_kernel_headers(args: argparse.Namespace, data: dict):
 
     apt_update_in_buildroot(args)
     plats = get_target_kernel_package_names(open(f"{args.target_dir}/target").read())
-    apt_list_pkgs = [f"'linux-headers-*-{plat}'" for plat in plats]
+    apt_list_pkgs = [f"linux-headers-*-{plat}" for plat in plats]
     apt_list_output = apt_list_kernel_headers_in_buildroot(args, apt_list_pkgs)
     versions = extract_kernel_version_ids(apt_list_output, plats)
     to_install = compute_kernel_versions_to_install(args, versions)
@@ -319,6 +323,7 @@ def apt_update_in_buildroot(args: argparse.Namespace):
             "root",
             "-d",
             "/",
+            "--",
             "apt_update",
         ]
     )
