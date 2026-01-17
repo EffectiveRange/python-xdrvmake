@@ -1,10 +1,54 @@
 import argparse
+import functools
+from io import StringIO
+import json
+import re
 import subprocess
 import yaml
 import jinja2
 import pkg_resources
 import pathlib
 import os
+import dotenv
+import filelock
+
+
+manifest_filename = "kernel_version_file_list.json"
+
+
+def semver_key(ver_id):
+    # Extract semver part before '+' or '-' or 'rpt' etc.
+    match = re.match(r"([0-9]+\.[0-9]+\.[0-9]+)", ver_id)
+    if match:
+        parts = match.group(1).split(".")
+        return tuple(int(p) for p in parts)
+    return (0, 0, 0)
+
+
+def extract_kernel_version_ids_single(apt_list_output: str, target: str) -> list[str]:
+    """
+    Extracts kernel version IDs from apt list output, filtering by a mandatory target ending.
+    Example line:
+    linux-headers-6.12.47+rpt-rpi-v8/stable,now 1:6.12.47-1+rpt1 arm64 [installed]
+    Returns: ["6.12.25+rpt-rpi-v8", "6.12.34+rpt-rpi-v8", ...] for target="rpi-v8"
+    """
+    version_ids = []
+    pattern = r"linux-headers-([\w\.+-]+" + re.escape(target) + r")(?:/|\s)"
+    for line in apt_list_output.strip().splitlines():
+        m = re.match(pattern, line)
+        if m:
+            version_ids.append(m.group(1))
+    return sorted(version_ids, key=semver_key, reverse=True)
+
+
+def extract_kernel_version_ids(
+    apt_list_output: str, target: list[str]
+) -> dict[str, list[str]]:
+    res = {}
+    for t in target:
+        vers = extract_kernel_version_ids_single(apt_list_output, t)
+        res[t] = vers
+    return res
 
 
 def get_args():
@@ -33,19 +77,37 @@ def get_args():
     )
 
     parser.add_argument(
-        "--kernel-root",
+        "--chroot-root",
         help="path to the kernel modules",
         required=False,
-        default="/var/chroot/buildroot/lib/modules",
+        default="/var/chroot/buildroot/",
+    )
+
+    parser.add_argument(
+        "--target-dir",
+        help="path to the target root filesystem",
+        required=False,
+        default="/home/crossbuilder/target",
     )
 
     parser.add_argument(
         "--arch",
         type=str,
-        help="target architecture, if not specified the /home/crossbuilder/target descriptior will be used to determine",
+        help="target architecture, if not specified the "
+        "<target-dir> descriptor will be used to determine",
         required=False,
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--kernel-ver-count",
+        type=int,
+        default=3,
+        help="number of last N kernel versions to install",
+    )
+    parsed = parser.parse_args()
+    chrootname = pathlib.Path(parsed.chroot_root).name
+    pvars = vars(parsed)
+    pvars["chroot_name"] = chrootname
+    return argparse.Namespace(**pvars)
 
 
 def get_arch(targetfile: str):
@@ -61,7 +123,11 @@ def get_template(name: str) -> jinja2.Template:
     config_path = pkg_resources.resource_filename("xdrvmake", f"templates/{name}.j2")
     with open(config_path, "r") as f:
         content = f.read()
-    return jinja2.Template(content)
+    env = jinja2.Environment()
+    def tuple_format(value, fmt):
+        return fmt.format(*value)
+    env.filters['tuple_format'] = tuple_format
+    return env.from_string(content)
 
 
 def set_globals(tmpl: jinja2.Template, data: dict):
@@ -76,11 +142,13 @@ def set_globals(tmpl: jinja2.Template, data: dict):
     tmpl.globals["dts_only"] = data.get("dts_only", False)
     tmpl.globals["blacklist"] = data.get("blacklist", None)
     tmpl.globals["public_header"] = data.get("public_header", None)
+    tmpl.globals["min_supported"] = data["min_supported"]
+    tmpl.globals["max_supported"] = data["max_supported"]
     return tmpl
 
 
 def create_stating(args: argparse.Namespace, data: dict):
-    os.makedirs(f"staging/DEBIAN", exist_ok=True)
+    os.makedirs("staging/DEBIAN", exist_ok=True)
     files = (
         ("control", "postinst", "postrm", "preinst")
         if not data["dts_only"]
@@ -105,7 +173,7 @@ def get_kernel_vers(args: argparse.Namespace) -> list[str]:
 
     return [
         entry.name
-        for entry in os.scandir(args.kernel_root)
+        for entry in os.scandir(f"{args.chroot_root}/lib/modules")
         if entry.is_dir() and not entry.name.startswith(".")
     ]
 
@@ -122,19 +190,138 @@ def build_driver(args: argparse.Namespace):
         exec_make(args, kernel_ver, "all")
 
 
-def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
-    cmd = ["make", "-C", args.build, target, f"KVER={kernel_ver}"]
+def exec_command(cmd: list[str]) -> str:
     popen = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    lines = []
     for line in iter(popen.stdout.readline, b""):
-        print(line.decode(), end="")
+        decoded = line.decode()
+        print(decoded, end="")
+        lines.append(decoded.strip())
     retcode = popen.wait()
     popen.stdout.close()
     if retcode:
         raise subprocess.CalledProcessError(retcode, cmd)
+    return "\n".join(lines)
+
+
+def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
+    cmd = ["make", "-C", args.build, target, f"KVER={kernel_ver}"]
+    exec_command(cmd)
+
+
+def apt_list_kernel_headers_in_buildroot(
+    args: argparse.Namespace, globs: list[str]
+) -> str:
+    return exec_command(
+        [
+            "schroot",
+            "-c",
+            args.chroot_name,
+            "-u",
+            "root",
+            "-d",
+            "/",
+            "apt",
+            "list",
+            "-a",
+            *globs,
+        ]
+    )
+
+
+def apt_install_kernel_headers_in_buildroot(
+    args: argparse.Namespace, packages: list[str]
+):
+    exec_command(
+        [
+            "schroot",
+            "-c",
+            args.chroot_name,
+            "-u",
+            "root",
+            "-d",
+            "/",
+            "apt_install",
+            *packages,
+        ]
+    )
+
+
+def compute_kernel_versions_to_install(
+    args: argparse.Namespace,
+    available_versions: dict[str, list[str]],
+) -> list[str]:
+    versions_to_install: list[str] = []
+    for plat, vers in available_versions.items():
+        versions_to_install.extend(
+            (f"linux-headers-{ver}" for ver in vers[: args.kernel_ver_count])
+        )
+    return versions_to_install
+
+
+def load_manifest_data(data: dict, versions: dict) -> None:
+    min_supported = []
+    max_supported = []
+    for plat, vers in versions.items():
+        vers.sort(key=semver_key)
+        min_supported.append((f"linux-image-{plat}", f"1:{vers[0]}"))
+        min_supported.append((f"linux-headers-{plat}", f"1:{vers[0]}"))
+        max_supported.append((f"linux-image-{plat}", f"1:{vers[-1]}"))
+        max_supported.append((f"linux-headers-{plat}", f"1:{vers[-1]}"))
+    data["min_supported"] = min_supported
+    data["max_supported"] = max_supported
+
+
+def load_manifest(data: dict):
+    with open(manifest_filename) as f:
+        versions: dict = json.load(f)
+        load_manifest_data(data, versions)
+
+
+def compute_and_store_manifest(
+    args: argparse.Namespace, versions: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    version_manifest = {}
+    for plat, vers in versions.items():
+        vers.sort(key=semver_key, reverse=True)
+        version_manifest[plat] = vers[: args.kernel_ver_count]
+    with open(manifest_filename, "w") as f:
+        json.dump(version_manifest, f, indent=4)
+    return version_manifest
+
+
+def install_kernel_headers(args: argparse.Namespace, data: dict):
+    if os.path.exists(manifest_filename):
+        load_manifest(data)
+        return
+
+    apt_update_in_buildroot(args)
+    plats = get_target_kernel_package_names(open(f"{args.target_dir}/target").read())
+    apt_list_pkgs = [f"'linux-headers-*-{plat}'" for plat in plats]
+    apt_list_output = apt_list_kernel_headers_in_buildroot(args, apt_list_pkgs)
+    versions = extract_kernel_version_ids(apt_list_output, plats)
+    to_install = compute_kernel_versions_to_install(args, versions)
+    apt_install_kernel_headers_in_buildroot(args, to_install)
+    load_manifest_data(data, compute_and_store_manifest(args, versions))
+
+
+def apt_update_in_buildroot(args: argparse.Namespace):
+    exec_command(
+        [
+            "schroot",
+            "-c",
+            args.chroot_name,
+            "-u",
+            "root",
+            "-d",
+            "/",
+            "apt_update",
+        ]
+    )
 
 
 def main():
@@ -145,6 +332,9 @@ def main():
 
     with open(f"{args.projectdir}/drivercfg.yaml") as f:
         data: dict = yaml.safe_load(f)
+
+    install_kernel_headers(args, data)
+
     setup_derived_data(args, data)
 
     create_makefile(data)
@@ -159,7 +349,7 @@ def create_makefile(data):
 
 def setup_derived_data(args, data):
     data["projectroot"] = pathlib.Path(args.projectdir).absolute()
-    data["architecture"] = args.arch or get_arch(f"/home/crossbuilder/target/target")
+    data["architecture"] = args.arch or get_arch(f"{args.target_dir}/target")
     if data["version"] == "auto":
         data["version"] = (
             subprocess.check_output(["git", "describe", "--tags", "--always"])
@@ -167,6 +357,19 @@ def setup_derived_data(args, data):
             .strip()
             .lstrip("v")
         )
+
+
+def get_target_kernel_package_names(target_file: str) -> list[str]:
+    values = dotenv.dotenv_values(stream=StringIO(target_file))
+    verlist = (values.get("RPI_KERNEL_VER_LIST") or "").split(",")
+    plat_list = [
+        m.group(1)
+        for ver in verlist
+        if (m := re.search(r"-(rpi-.+)$", ver)) is not None
+    ]
+    if not plat_list:
+        raise ValueError("No Raspberry Pi kernel versions found in target file")
+    return plat_list
 
 
 def render_makefile(data: dict) -> str:
@@ -177,4 +380,6 @@ def render_makefile(data: dict) -> str:
 
 
 if __name__ == "__main__":
-    main()
+    lock = filelock.FileLock("xdrvmake.lock")
+    with lock:
+        main()
