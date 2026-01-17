@@ -454,7 +454,14 @@ class TestBuilderUtils(unittest.TestCase):
             with open(target_file, "w") as f:
                 f.write("TARGET_ARCH='arm64'\n")
             args = type(
-                "Args", (), {"projectdir": tmp, "arch": None, "target_dir": tmp}
+                "Args",
+                (),
+                {
+                    "projectdir": tmp,
+                    "arch": None,
+                    "target_dir": tmp,
+                    "version": "1.0.0",
+                },
             )()
             data = {"version": "1.0.0"}
             setup_derived_data(args, data)
@@ -467,7 +474,8 @@ class TestBuilderUtils(unittest.TestCase):
                 os.chdir(gitdir)
                 try:
                     os.system(
-                        "git init && git commit --allow-empty -m 'init' && git tag v1.2.3"
+                        'git init && git config user.email "you@example.com" && git config user.name "Your Name"  &&'
+                        ' git commit --allow-empty -m "init" && git tag v1.2.3'
                     )
                     args2 = type(
                         "Args",
