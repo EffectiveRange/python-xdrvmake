@@ -1,5 +1,6 @@
 #!/usr/bin/python3 -u
 
+import argparse
 import unittest
 import textwrap
 from xdrvmake.builder import (
@@ -149,10 +150,7 @@ class TestAptKernelVersionParsing(unittest.TestCase):
             "linux-headers-6.12.34+rpt-rpi-v8",
         ]
 
-        class Args:
-            kernel_ver_count = 3
-
-        computed = compute_kernel_versions_to_install(Args(), available_versions)
+        computed = compute_kernel_versions_to_install(argparse.Namespace(kernel_ver_count=3), available_versions)
         self.assertEqual(computed, to_install)
 
 
@@ -205,7 +203,7 @@ class TestBuilderUtils(unittest.TestCase):
     def test_load_manifest_data(self):
         from xdrvmake.builder import load_manifest_data
 
-        data = {}
+        data: dict = {}
         versions = {"plat": ["6.12.34+rpt-plat", "6.12.62+rpt-plat"]}
         load_manifest_data(data, versions)
         self.assertIn("min_supported", data)
@@ -218,15 +216,14 @@ class TestBuilderUtils(unittest.TestCase):
         import json
         from xdrvmake.builder import compute_and_store_manifest
 
-        class Args:
-            kernel_ver_count = 1
-
         versions = {"plat": ["6.12.62+rpt-rpi-plat", "6.12.34+rpt-rpi-plat"]}
         with tempfile.TemporaryDirectory() as tmp:
             old = os.getcwd()
             os.chdir(tmp)
             try:
-                manifest = compute_and_store_manifest(Args(), versions)
+                _ = compute_and_store_manifest(
+                    argparse.Namespace(kernel_ver_count=1), versions
+                )
                 self.assertTrue(os.path.exists("kernel_version_file_list.json"))
                 with open("kernel_version_file_list.json") as f:
                     data = json.load(f)
@@ -247,10 +244,9 @@ class TestBuilderUtils(unittest.TestCase):
 
     def test_render_debian_file_and_create_stating(self):
         import tempfile
-        import shutil
         import os
         from xdrvmake.builder import render_debian_file, create_stating
-        from xdrvmake.builder import get_template
+
         # Minimal data for template rendering
         data = {
             "project": "testproj",
@@ -284,10 +280,18 @@ class TestBuilderUtils(unittest.TestCase):
                 self.assertIn("Package: testproj", control_content)
                 self.assertIn("Version: 1.0", control_content)
                 self.assertIn("Maintainer: maint", control_content)
-                self.assertIn("linux-image-testproj (>>1:6.12.62+rpt-testproj)", control_content)
-                self.assertIn("linux-headers-testproj (>>1:6.12.62+rpt-testproj)", control_content)
-                self.assertIn("linux-image-testproj (>=1:6.12.34+rpt-testproj)", control_content)
-                self.assertIn("linux-headers-testproj (>=1:6.12.34+rpt-testproj)", control_content)
+                self.assertIn(
+                    "linux-image-testproj (>>1:6.12.62+rpt-testproj)", control_content
+                )
+                self.assertIn(
+                    "linux-headers-testproj (>>1:6.12.62+rpt-testproj)", control_content
+                )
+                self.assertIn(
+                    "linux-image-testproj (>=1:6.12.34+rpt-testproj)", control_content
+                )
+                self.assertIn(
+                    "linux-headers-testproj (>=1:6.12.34+rpt-testproj)", control_content
+                )
                 # Test create_stating (should create all files)
                 create_stating(type("Args", (), {})(), data)
                 for fname in ["control", "postinst", "postrm", "preinst"]:
@@ -299,9 +303,22 @@ class TestBuilderUtils(unittest.TestCase):
         import sys
         from xdrvmake.builder import get_args
         import types
+
         old_argv = sys.argv
         try:
-            sys.argv = ["prog", "/tmp/project", "--build", "/tmp/build", "--kernel-ver", "foo", "bar", "--arch", "armhf", "--kernel-ver-count", "2"]
+            sys.argv = [
+                "prog",
+                "/tmp/project",
+                "--build",
+                "/tmp/build",
+                "--kernel-ver",
+                "foo",
+                "bar",
+                "--arch",
+                "armhf",
+                "--kernel-ver-count",
+                "2",
+            ]
             args = get_args()
             self.assertEqual(args.projectdir, "/tmp/project")
             self.assertEqual(args.build, "/tmp/build")
@@ -316,9 +333,11 @@ class TestBuilderUtils(unittest.TestCase):
         import tempfile
         import os
         from xdrvmake.builder import get_kernel_vers
+
         class Args:
             kernel_ver = None
             chroot_root = None
+
         with tempfile.TemporaryDirectory() as tmp:
             lib_modules = os.path.join(tmp, "lib", "modules")
             os.makedirs(lib_modules)
@@ -335,19 +354,27 @@ class TestBuilderUtils(unittest.TestCase):
     def test_build_driver(self):
         from xdrvmake.builder import build_driver
         import types
+
         called = []
+
         def fake_exec_make(args, kernel_ver, target):
             called.append((kernel_ver, target))
+
         # Patch exec_make
         import xdrvmake.builder
+
         old_exec_make = xdrvmake.builder.exec_make
         xdrvmake.builder.exec_make = fake_exec_make
+
         class Args:
             kernel_ver = ["v1", "v2", "v3"]
+
         try:
             build_driver(Args)
             # Should call driver for v1, v2 and all for v3
-            self.assertEqual(called, [("v1", "driver"), ("v2", "driver"), ("v3", "all")])
+            self.assertEqual(
+                called, [("v1", "driver"), ("v2", "driver"), ("v3", "all")]
+            )
         finally:
             xdrvmake.builder.exec_make = old_exec_make
 
@@ -366,14 +393,16 @@ class TestBuilderUtils(unittest.TestCase):
         os.makedirs(f"{chroot_root}/lib/modules/6.1.0-test", exist_ok=True)
         os.makedirs(target_dir, exist_ok=True)
         with open(f"{target_dir}/target", "w") as f:
-            f.write("RPI_KERNEL_VER_LIST=6.1.0-rpi-v8,6.1.0-rpi-v7\nTARGET_ARCH='arm64'\n")
+            f.write(
+                "RPI_KERNEL_VER_LIST=6.1.0-rpi-v8,6.1.0-rpi-v7\nTARGET_ARCH='arm64'\n"
+            )
 
         # Prepare args
         args = types.SimpleNamespace(
             chroot_root=chroot_root,
             target_dir=target_dir,
             chroot_name="buildroot",
-            kernel_ver_count=1
+            kernel_ver_count=1,
         )
         data = {
             "project": "TestProj",
@@ -388,16 +417,21 @@ class TestBuilderUtils(unittest.TestCase):
             "blacklist": None,
             "public_header": None,
             "min_supported": [],
-            "max_supported": []
+            "max_supported": [],
         }
         manifest_path = os.path.join(os.getcwd(), "kernel_version_file_list.json")
         if os.path.exists(manifest_path):
             os.remove(manifest_path)
 
-        with patch("xdrvmake.builder.exec_command", return_value="linux-headers-6.1.0-rpi-v8/stable,now 1:6.1.0-1+rpt1 arm64 [installed]\nlinux-headers-6.1.0-rpi-v7/stable,now 1:6.1.0-1+rpt1 arm64 [installed]"), \
-             patch("xdrvmake.builder.apt_update_in_buildroot", return_value=None), \
-             patch("xdrvmake.builder.apt_install_kernel_headers_in_buildroot", return_value=None):
+        with patch(
+            "xdrvmake.builder.exec_command",
+            return_value="linux-headers-6.1.0-rpi-v8/stable,now 1:6.1.0-1+rpt1 arm64 [installed]\nlinux-headers-6.1.0-rpi-v7/stable,now 1:6.1.0-1+rpt1 arm64 [installed]",
+        ), patch("xdrvmake.builder.apt_update_in_buildroot", return_value=None), patch(
+            "xdrvmake.builder.apt_install_kernel_headers_in_buildroot",
+            return_value=None,
+        ):
             from xdrvmake import builder
+
             builder.install_kernel_headers(args, data)
             self.assertTrue(os.path.exists(manifest_path))
             with open(manifest_path) as f:
@@ -421,12 +455,15 @@ class TestBuilderUtils(unittest.TestCase):
         import tempfile
         import os
         from xdrvmake.builder import setup_derived_data
+
         # Create a dummy target file
         with tempfile.TemporaryDirectory() as tmp:
             target_file = os.path.join(tmp, "target")
             with open(target_file, "w") as f:
                 f.write("TARGET_ARCH='arm64'\n")
-            args = type("Args", (), {"projectdir": tmp, "arch": None, "target_dir": tmp})()
+            args = type(
+                "Args", (), {"projectdir": tmp, "arch": None, "target_dir": tmp}
+            )()
             data = {"version": "1.0.0"}
             setup_derived_data(args, data)
             self.assertEqual(data["architecture"], "arm64")
@@ -437,8 +474,14 @@ class TestBuilderUtils(unittest.TestCase):
                 old = os.getcwd()
                 os.chdir(gitdir)
                 try:
-                    os.system("git init && git commit --allow-empty -m 'init' && git tag v1.2.3")
-                    args2 = type("Args", (), {"projectdir": gitdir, "arch": None, "target_dir": tmp})()
+                    os.system(
+                        "git init && git commit --allow-empty -m 'init' && git tag v1.2.3"
+                    )
+                    args2 = type(
+                        "Args",
+                        (),
+                        {"projectdir": gitdir, "arch": None, "target_dir": tmp},
+                    )()
                     setup_derived_data(args2, data2)
                     self.assertTrue(data2["version"].startswith("1.2.3"))
                 finally:
@@ -448,6 +491,7 @@ class TestBuilderUtils(unittest.TestCase):
         import tempfile
         import os
         from xdrvmake.builder import create_makefile
+
         data = {
             "project": "testproj",
             "maintainer": "maint",

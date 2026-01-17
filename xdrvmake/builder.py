@@ -1,5 +1,4 @@
 import argparse
-import functools
 from io import StringIO
 import json
 import re
@@ -110,7 +109,7 @@ def get_args():
     return argparse.Namespace(**pvars)
 
 
-def get_arch(targetfile: str):
+def get_arch(targetfile: str) -> str:
     with open(targetfile) as f:
         for line in f.readlines():
             if "TARGET_ARCH=" in line:
@@ -124,13 +123,15 @@ def get_template(name: str) -> jinja2.Template:
     with open(config_path, "r") as f:
         content = f.read()
     env = jinja2.Environment()
+
     def tuple_format(value, fmt):
         return fmt.format(*value)
-    env.filters['tuple_format'] = tuple_format
+
+    env.filters["tuple_format"] = tuple_format
     return env.from_string(content)
 
 
-def set_globals(tmpl: jinja2.Template, data: dict):
+def set_globals(tmpl: jinja2.Template, data: dict) -> jinja2.Template:
     tmpl.globals["project"] = data["project"]
     tmpl.globals["modulename"] = data.get("modulename", None)
     tmpl.globals["sourcedir"] = data.get("sourcedir", "src")
@@ -147,7 +148,7 @@ def set_globals(tmpl: jinja2.Template, data: dict):
     return tmpl
 
 
-def create_stating(args: argparse.Namespace, data: dict):
+def create_stating(args: argparse.Namespace, data: dict) -> None:
     os.makedirs("staging/DEBIAN", exist_ok=True)
     files = (
         ("control", "postinst", "postrm", "preinst")
@@ -169,7 +170,7 @@ def render_debian_file(data, file):
 
 def get_kernel_vers(args: argparse.Namespace) -> list[str]:
     if args.kernel_ver is not None:
-        return args.kernel_ver
+        return list(args.kernel_ver)
 
     return [
         entry.name
@@ -178,7 +179,7 @@ def get_kernel_vers(args: argparse.Namespace) -> list[str]:
     ]
 
 
-def build_driver(args: argparse.Namespace):
+def build_driver(args: argparse.Namespace) -> None:
     kernel_vers = get_kernel_vers(args)
     if not kernel_vers:
         raise ValueError("No kernel versions found")
@@ -197,6 +198,8 @@ def exec_command(cmd: list[str]) -> str:
         stderr=subprocess.PIPE,
     )
     lines = []
+    if popen.stdout is None:
+        raise RuntimeError("Failed to capture stdout")
     for line in iter(popen.stdout.readline, b""):
         decoded = line.decode()
         print(decoded, end="")
@@ -208,9 +211,9 @@ def exec_command(cmd: list[str]) -> str:
     return "\n".join(lines)
 
 
-def exec_make(args: argparse.Namespace, kernel_ver: str, target: str):
+def exec_make(args: argparse.Namespace, kernel_ver: str, target: str) -> str:
     cmd = ["make", "-C", args.build, target, f"KVER={kernel_ver}"]
-    exec_command(cmd)
+    return exec_command(cmd)
 
 
 def apt_list_kernel_headers_in_buildroot(
@@ -236,8 +239,8 @@ def apt_list_kernel_headers_in_buildroot(
 
 def apt_install_kernel_headers_in_buildroot(
     args: argparse.Namespace, packages: list[str]
-):
-    exec_command(
+) -> str:
+    return exec_command(
         [
             "schroot",
             "-c",
@@ -280,7 +283,7 @@ def load_manifest_data(data: dict, versions: dict) -> None:
     data["max_supported"] = max_supported
 
 
-def load_manifest(data: dict):
+def load_manifest(data: dict) -> None:
     with open(manifest_filename) as f:
         versions: dict = json.load(f)
         load_manifest_data(data, versions)
@@ -298,7 +301,7 @@ def compute_and_store_manifest(
     return version_manifest
 
 
-def install_kernel_headers(args: argparse.Namespace, data: dict):
+def install_kernel_headers(args: argparse.Namespace, data: dict) -> None:
     if os.path.exists(manifest_filename):
         load_manifest(data)
         return
@@ -313,8 +316,8 @@ def install_kernel_headers(args: argparse.Namespace, data: dict):
     load_manifest_data(data, compute_and_store_manifest(args, versions))
 
 
-def apt_update_in_buildroot(args: argparse.Namespace):
-    exec_command(
+def apt_update_in_buildroot(args: argparse.Namespace) -> str:
+    return exec_command(
         [
             "schroot",
             "-c",
@@ -348,7 +351,7 @@ def main():
 
 
 def create_makefile(data):
-    with open(f"Makefile", "w") as f:
+    with open("Makefile", "w") as f:
         f.write(render_makefile(data))
 
 

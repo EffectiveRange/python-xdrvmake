@@ -17,6 +17,15 @@ maintainers = [
 license = {file = "LICENSE"}
 readme = "README.md"
 
+[project.optional-dependencies]
+dev = [
+  "flake8>=6.0",
+  "mypy>=1.8",
+  "pytest",
+  "coverage",
+  "flake8-pyproject",
+]
+
 # [tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
@@ -27,3 +36,39 @@ xdrvmake = ["templates/*.j2"]
 
 [project.scripts]
 xdrvmake = "xdrvmake.builder:main"
+
+[tool.mypy]
+# What to type-check
+files = ["xdrvmake"]
+
+# Practical defaults
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+
+# Be strict *where it matters*, but not painful
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+
+# Imports / ecosystem sanity
+ignore_missing_imports = false
+follow_imports = "normal"
+
+# Speed & noise control
+pretty = true
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+  "jinja2.*",
+  "yaml.*",
+  "dotenv.*",
+  "filelock.*",
+]
+ignore_missing_imports = true
+
