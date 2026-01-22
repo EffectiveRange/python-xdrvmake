@@ -340,7 +340,8 @@ def main():
     with open(f"{args.projectdir}/drivercfg.yaml") as f:
         data: dict = yaml.safe_load(f)
 
-    install_kernel_headers(args, data)
+    if data.get("dts_only", False):
+        install_kernel_headers(args, data)
 
     setup_derived_data(args, data)
 
@@ -383,7 +384,8 @@ def render_makefile(data: dict) -> str:
     jtmpl = get_template("Makefile")
     jtmpl.globals = data
     set_globals(jtmpl, data)
-    return jtmpl.render()
+    res : str = jtmpl.render()
+    return res
 
 
 if __name__ == "__main__":
