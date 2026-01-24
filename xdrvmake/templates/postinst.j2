@@ -1,17 +1,157 @@
-#!/bin/bash
+#!/bin/sh
+set -eu
+set -o pipefail
 
-{% if blacklist %}
-if [[ ! -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf ]]
-then
-    echo "blacklist {{ blacklist }}" > /etc/modprobe.d/blacklist-{{ blacklist }}.conf 
-fi
-{% endif %}
+# SPDX-License-Identifier: MIT
+#
+# postinst for a DTBO package that ships multiple kernel-specific dtbos and
+# selects the correct one for the NEXT boot kernel.
+#
+# Assumptions (adjust to your layout):
+#   - You ship kernel-specific dtbos under:
+#       /usr/lib/er-overlays/<krel>/<overlay-name>.dtbo
+#     where:
+#       <krel>    is like "6.12.62+rpt-rpi-2712"
+#   - The firmware loads a single public name:
+#       /boot/firmware/overlays/<overlay-name>.dtbo
+#   - You want automatic reselection when kernels change:
+#       debian/triggers: interest-noawait /usr/lib/modules
+#
+# Notes:
+#   - If /boot/firmware/config.txt contains kernel=..., we treat that as the next
+#     boot kernel *only if* the referenced file exists on /boot/firmware.
+#   - Otherwise we pick "latest installed" kernel for the platform flavour.
 
-if [[ -z "$(grep {{ modulename }} /etc/modules)"  ]];
-then 
-    echo "Adding {{ modulename }} to /etc/modules ..."
-    echo '{{ modulename }}' >> /etc/modules
-    depmod || true
-fi
+OVERLAY_NAME="{{ project }}"  # <-- change for your package
+PUBLIC_DTBO="/boot/firmware/overlays/${OVERLAY_NAME}.dtbo"
+BASE="/usr/lib/er-overlays"  # <-- change if you use a different base
 
-echo "Please add 'dtoverlay={{ project }}' if needed, then reboot ..."
+CFG="/boot/firmware/config.txt"
+
+log() { echo "postinst(${OVERLAY_NAME}): $*" >&2; }
+
+# Return 0 and echo value if key exists (last match wins), else return 1.
+cfg_get_last() {
+  key="$1"
+  [ -r "$CFG" ] || return 1
+  # strip comments, match "key=value"
+  val="$( grep -E "^[[:space:]]*${key}[[:space:]]*=" "$CFG" | tail -n1 | sed -E "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//" | tr -d '\r'  | cut -d'#' -f1 | sed 's/[[:space:]]*$//' || true )"
+  [ -n "$val" ] || return 1
+  echo "$val"
+}
+
+# Determine platform flavour for next boot.
+detect_flavour() {
+  uname -r | cut -d+ -f2
+}
+
+# Given kernel= value from config, attempt to infer krel.
+# Supports "vmlinuz-<krel>" naming.
+infer_krel_from_kernel_directive() {
+  kfile="$1"
+  # Most deterministic case: kernel=vmlinuz-<krel>
+  case "$kfile" in
+    vmlinuz-*)
+      echo "${kfile#vmlinuz-}"
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Latest installed kernel release string for flavour.
+latest_installed_krel_for_flavour() {
+  flavour="$1"
+  krel="$(ls -1 /usr/lib/modules 2>/dev/null | grep "${flavour}\$" | sort -V | tail -n1 || true)"
+  [ -n "$krel" ] || return 1
+  echo "$krel"
+}
+
+# Find a dtbo source path for flavour + krel.
+dtbo_src_for() {
+  flavour="$1"
+  krel="$2"
+  src="${BASE}/${krel}/${OVERLAY_NAME}.dtbo"
+  [ -f "$src" ] || return 1
+  echo "$src"
+}
+
+# Choose next-boot kernel release based on config.txt + installed kernels.
+determine_next_boot_krel() {
+  flavour="$(detect_flavour)"
+
+  # If config pins a kernel file, only trust it if firmware can see it on /boot/firmware.
+  kfile="$(cfg_get_last kernel 2>/dev/null || true)"
+  if [ -n "$kfile" ]; then
+    if [ -e "/boot/firmware/${kfile}" ]; then
+      krel="$(infer_krel_from_kernel_directive "$kfile" 2>/dev/null || true)"
+      if [ -n "$krel" ]; then
+        echo "${flavour}:${krel}:pinned"
+        return 0
+      else
+        log "kernel=${kfile} exists on /boot/firmware but does not encode krel (not vmlinuz-<krel>); falling back to latest installed."
+      fi
+    else
+      log "kernel=${kfile} is set but /boot/firmware/${kfile} does not exist; ignoring kernel= for selection."
+    fi
+  fi
+
+  krel="$(latest_installed_krel_for_flavour "$flavour")"
+  echo "${flavour}:${krel}:latest"
+}
+
+select_and_activate() {
+  triple="$(determine_next_boot_krel)"
+  flavour="${triple%%:*}"
+  rest="${triple#*:}"
+  krel="${rest%%:*}"
+  mode="${rest##*:}"
+
+  log "Determined next boot kernel: flavour=${flavour} krel=${krel} mode=${mode}"
+
+  src="$(dtbo_src_for "$flavour" "$krel" 2>/dev/null || true)"
+  if [ -z "$src" ] ; then
+    log "ERROR: no dtbo found for flavour=${flavour} krel=${krel}"
+    log "       Expected: ${BASE}/${krel}/${OVERLAY_NAME}.dtbo"
+    log "       Available under ${BASE}/:"
+    ls -1 "${BASE}" 2>/dev/null || true
+    exit 1
+  fi
+
+  log "Selected dtbo (${mode}): ${PUBLIC_DTBO} -> ${src}"
+  install -m 0644 "$src" "$PUBLIC_DTBO"
+
+}
+
+case "${1:-}" in
+  configure|triggered)
+    select_and_activate
+    {% if blacklist %}
+    if [[ ! -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf ]]
+    then
+        log "blacklist {{ blacklist }}" > /etc/modprobe.d/blacklist-{{ blacklist }}.conf 
+    fi
+    {% endif %}
+    {% if not dts_only %}
+    if [[ -z "$(grep {{ modulename }} /etc/modules)"  ]];
+    then 
+        log "Adding {{ modulename }} to /etc/modules ..."
+        echo '{{ modulename }}' >> /etc/modules
+        depmod || true
+    fi
+    log "Please add 'dtoverlay={{ project }}' if needed, then reboot ..."
+    {% endif %}
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure)
+    # nothing
+    ;;
+  *)
+    # dpkg may call postinst with other args; do nothing by default.
+    ;;
+esac
+
+exit 0
+
+
+
+

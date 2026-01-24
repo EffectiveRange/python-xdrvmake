@@ -9,15 +9,8 @@ KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
-{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} {{ project }}.dtbo staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
+{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
 	mkdir -p staging//lib/modules/$(KVER)
-	if [ "$(DISTRO)" = "bullseye" ]; then \
-		mkdir -p staging//boot/overlays/; \
-		cp {{ project }}.dtbo staging/boot/overlays/ ;\
-	else \
-		mkdir -p staging/boot/firmware/overlays/; \
-		cp {{ project }}.dtbo staging//boot/firmware/overlays/; \
-	fi
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
 {% if public_header %}
@@ -42,15 +35,17 @@ driver: staging/lib/modules/$(KVER)/{{ modulename }}.ko
 clean:
 	rm -rf staging/boot/ staging/lib/ 
 
-{{ project }}.dts.pre: {{projectroot}}/{{ project }}.dts
+{{ project }}-$(KVER).dts.pre: {{projectroot}}/{{ project }}.dts
 	if [ "$(DISTRO)" = "bullseye" ]; then \
-		cpp -nostdinc -undef -x assembler-with-cpp -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}.dts.pre {{projectroot}}/{{ project }}.dts ;\
+		cpp -nostdinc -undef -x assembler-with-cpp -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}-$(KVER).dts.pre {{projectroot}}/{{ project }}.dts ;\
 	else \
 		KHDR_DIR=`ls -d1 /var/chroot/buildroot/usr/src/*$(KBASEVER)*-common-rpi`; \
-		cpp -nostdinc -undef -x assembler-with-cpp -I$${KHDR_DIR}/include -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}.dts.pre {{projectroot}}/{{ project }}.dts ;\
+		cpp -nostdinc -undef -x assembler-with-cpp -I$${KHDR_DIR}/include -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}-$(KVER).dts.pre {{projectroot}}/{{ project }}.dts ;\
 	fi
-{{ project }}.dtbo: {{ project }}.dts.pre
-	dtc  -I dts -O dtb -o {{ project }}.dtbo {{ project }}.dts.pre
+
+staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo: {{ project }}-$(KVER).dts.pre
+	mkdir -p staging/usr/lib/er-overlays/$(KVER)
+	dtc  -I dts -O dtb -o staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo {{ project }}-$(KVER).dts.pre
 
 deploy: all
 	rsync -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" -avhz --progress {{ project }}_$(VERSION)-1_$(ARCH).deb $(TARGET):/tmp/

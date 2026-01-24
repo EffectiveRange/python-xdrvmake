@@ -1,13 +1,42 @@
-#!/bin/bash
-echo "Removing module autoload for {{ modulename }} ..."
-sed -ri '/^\s*{{ modulename }}/d' /etc/modules
+#!/bin/sh
+set -eu
 
-{% if blacklist %}
-echo "Removing {{ blacklist }} blacklist ..."
-rm -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf
-{% endif %}
+# SPDX-License-Identifier: MIT
+#
+# postrm: remove the firmware-visible DTBO target on package removal.
+# (Packaged dtbos under /usr/lib/... are removed by dpkg automatically.)
 
+OVERLAY_NAME="{{ project }}"
+PUBLIC_DTBO="/boot/firmware/overlays/${OVERLAY_NAME}.dtbo"
 
-echo "If {{ project }} driver is not required remove 'dtoverlay={{ project }}' from /boot/config.txt ..."
+log() { echo "postrm(${OVERLAY_NAME}): $*" >&2; }
 
-depmod
+case "${1:-}" in
+  remove|purge)
+    if [ -e "$PUBLIC_DTBO" ] || [ -L "$PUBLIC_DTBO" ]; then
+      rm -f -- "$PUBLIC_DTBO"
+      log "Removed $PUBLIC_DTBO"
+    fi
+{%- if not dts_only %}
+    log "Removing module autoload for {{ modulename }} ..."
+    if [ -f /etc/modules ]; then
+      sed -ri '/^[[:space:]]*{{ modulename }}([[:space:]]|$)/d' /etc/modules
+    fi
+{%- endif %}
+{%- if blacklist %}
+    log "Removing {{ blacklist }} blacklist ..."
+    rm -f -- "/etc/modprobe.d/blacklist-{{ blacklist }}.conf"
+{%- endif %}
+    log "If {{ project }} driver is not required remove 'dtoverlay={{ project }}' from /boot/firmware/config.txt (or /boot/config.txt) ..."
+{%- if not dts_only %}
+    depmod -a || true
+{%- endif %}
+    ;;
+  upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    # On upgrade, do nothing (new version will install its own dtbo in postinst).
+    ;;
+  *)
+    ;;
+esac
+
+exit 0

@@ -149,11 +149,7 @@ def set_globals(tmpl: jinja2.Template, data: dict) -> jinja2.Template:
 
 def create_stating(args: argparse.Namespace, data: dict) -> None:
     os.makedirs("staging/DEBIAN", exist_ok=True)
-    files = (
-        ("control", "postinst", "postrm", "preinst")
-        if not data["dts_only"]
-        else ("control", "preinst")
-    )
+    files = ("control", "postinst", "postrm", "triggers")
     for file in files:
         render_debian_file(data, file)
 
@@ -340,7 +336,7 @@ def main():
     with open(f"{args.projectdir}/drivercfg.yaml") as f:
         data: dict = yaml.safe_load(f)
 
-    if data.get("dts_only", False):
+    if args.kernel_ver_count > 0:
         install_kernel_headers(args, data)
 
     setup_derived_data(args, data)
@@ -384,7 +380,7 @@ def render_makefile(data: dict) -> str:
     jtmpl = get_template("Makefile")
     jtmpl.globals = data
     set_globals(jtmpl, data)
-    res : str = jtmpl.render()
+    res: str = jtmpl.render()
     return res
 
 

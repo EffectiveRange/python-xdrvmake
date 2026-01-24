@@ -1,9 +1,0 @@
-#!/bin/bash
-if [ -f /boot/overlays/{{ project }}.dtbo ]; then
-    echo "Removing mrhat-bq25622 overlay from /boot/overlays ..."
-    rm -f /boot/overlays/{{ project }}.dtbo
-fi
-if [ -f /boot/firmware/overlays/{{ project }}.dtbo ]; then
-    echo "Removing mrhat-bq25622 overlay from /boot/firmware/overlays ..."
-    rm -f /boot/firmware/overlays/{{ project }}.dtbo
-fi
