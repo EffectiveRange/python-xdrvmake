@@ -296,13 +296,32 @@ def compute_and_store_manifest(
     return version_manifest
 
 
+def get_installed_kernel_headers(
+    args: argparse.Namespace, targets: list[str]
+) -> dict[str, list[str]]:
+    lib_modules_path = pathlib.Path(f"{args.chroot_root}/lib/modules")
+    modules = [
+        entry.name
+        for entry in os.scandir(lib_modules_path)
+        if entry.is_dir() and not entry.name.startswith(".")
+    ]
+    return extract_kernel_version_ids("\n".join(modules), targets)
+
+
 def install_kernel_headers(args: argparse.Namespace, data: dict) -> None:
     if os.path.exists(manifest_filename):
         load_manifest(data)
         return
 
-    apt_update_in_buildroot(args)
+    # use the installed kernel headers in the buildroot
     plats = get_target_kernel_package_names(open(f"{args.target_dir}/target").read())
+    if args.kernel_ver_count == 0:
+        load_manifest_data(
+            data,
+            compute_and_store_manifest(args, get_installed_kernel_headers(args, plats)),
+        )
+        return
+    apt_update_in_buildroot(args)
     apt_list_pkgs = [f"linux-headers-*-{plat}" for plat in plats]
     apt_list_output = apt_list_kernel_headers_in_buildroot(args, apt_list_pkgs)
     versions = extract_kernel_version_ids(apt_list_output, plats)
@@ -336,8 +355,7 @@ def main():
     with open(f"{args.projectdir}/drivercfg.yaml") as f:
         data: dict = yaml.safe_load(f)
 
-    if args.kernel_ver_count > 0:
-        install_kernel_headers(args, data)
+    install_kernel_headers(args, data)
 
     setup_derived_data(args, data)
 

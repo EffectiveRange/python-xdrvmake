@@ -69,6 +69,26 @@ linux-headers-6.12.62+rpt-rpi-v8/stable,now 1:6.12.62-1+rpt1 arm64 [installed]
 
 
 class TestAptKernelVersionParsing(unittest.TestCase):
+    def test_kernel_ver_count_zero(self):
+        available_versions = {
+            "rpi-2712": [
+                "6.12.62+rpt-rpi-2712",
+                "6.12.47+rpt-rpi-2712",
+                "6.12.34+rpt-rpi-2712",
+                "6.12.25+rpt-rpi-2712",
+            ],
+            "rpi-v8": [
+                "6.12.62+rpt-rpi-v8",
+                "6.12.47+rpt-rpi-v8",
+                "6.12.34+rpt-rpi-v8",
+                "6.12.25+rpt-rpi-v8",
+            ],
+        }
+        computed = compute_kernel_versions_to_install(
+            argparse.Namespace(kernel_ver_count=0), available_versions
+        )
+        self.assertEqual(computed, [])
+
     def test_finding_rpi_plats(self):
         plats = get_target_kernel_package_names(sample_target_file)
         self.assertEqual(
@@ -157,6 +177,7 @@ class TestAptKernelVersionParsing(unittest.TestCase):
 
 
 class TestBuilderUtils(unittest.TestCase):
+
     def test_semver_key(self):
         from xdrvmake.builder import semver_key
 
