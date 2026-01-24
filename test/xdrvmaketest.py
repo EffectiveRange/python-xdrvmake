@@ -293,7 +293,7 @@ class TestBuilderUtils(unittest.TestCase):
                 )
                 # Test create_stating (should create all files)
                 create_stating(type("Args", (), {})(), data)
-                for fname in ["control", "postinst", "postrm", "preinst"]:
+                for fname in ["control", "postinst", "postrm", "triggers"]:
                     self.assertTrue(os.path.exists(f"staging/DEBIAN/{fname}"))
             finally:
                 os.chdir(cwd)
