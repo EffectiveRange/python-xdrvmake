@@ -10,7 +10,6 @@ all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
 {{ project }}_$(VERSION)-1_$(ARCH).deb : driver staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
-	mkdir -p staging//lib/modules/$(KVER)
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
 {% if public_header %}
@@ -34,7 +33,7 @@ driver: staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo
 {% endif %}
 
 clean:
-	rm -rf staging/boot/ staging/lib/ 
+	rm -vrf staging/boot/ staging/lib/ staging/usr/ {{ project }}-*.dts.pre {{ project }}_*.deb
 
 {{ project }}-$(KVER).dts.pre: {{projectroot}}/{{ project }}.dts
 	if [ "$(DISTRO)" = "bullseye" ]; then \
