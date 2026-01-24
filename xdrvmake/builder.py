@@ -159,6 +159,8 @@ def render_debian_file(data, file):
     set_globals(tmpl, data)
     with open(f"staging/DEBIAN/{file}", "w") as f:
         f.write(tmpl.render())
+        # add extra newline at end of file for debian compliance
+        f.write("\n")
     if file != "control":
         os.chmod(f"staging/DEBIAN/{file}", 0o755)
 
@@ -290,7 +292,9 @@ def compute_and_store_manifest(
     version_manifest = {}
     for plat, vers in versions.items():
         vers.sort(key=semver_key, reverse=True)
-        version_manifest[plat] = vers[: args.kernel_ver_count]
+        version_manifest[plat] = (
+            vers[: args.kernel_ver_count] if args.kernel_ver_count > 0 else vers
+        )
     with open(manifest_filename, "w") as f:
         json.dump(version_manifest, f, indent=4)
     return version_manifest
@@ -305,7 +309,7 @@ def get_installed_kernel_headers(
         for entry in os.scandir(lib_modules_path)
         if entry.is_dir() and not entry.name.startswith(".")
     ]
-    return extract_kernel_version_ids("\n".join(modules), targets)
+    return {t: [m for m in modules if m.endswith(t)] for t in targets}
 
 
 def install_kernel_headers(args: argparse.Namespace, data: dict) -> None:
