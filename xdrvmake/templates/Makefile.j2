@@ -9,7 +9,7 @@ KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
-{{ project }}_$(VERSION)-1_$(ARCH).deb : {% if not dts_only %} driver {% endif %} staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
+{{ project }}_$(VERSION)-1_$(ARCH).deb : driver staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
 	mkdir -p staging//lib/modules/$(KVER)
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
@@ -20,16 +20,17 @@ staging/usr/include/{{ public_header }}:  {{projectroot}}/{{ sourcedir }}/{{ pub
 {% endif %}
 
 {% if not dts_only %}
-
 staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile
 	mkdir -p staging/lib/modules/$(KVER)/
 	rsync --delete -r  {{ projectroot }}/{{ sourcedir }}/ /tmp/drv-{{ project }}
 	schroot -c buildroot -u root -d /tmp/drv-{{ project }} -- make KVER=$(KVER) {{ kbuild_flags }}
 	cp /tmp/drv-{{ project }}/{{ modulename }}.ko staging/lib/modules/$(KVER)/{{ modulename }}.ko
 
-driver: staging/lib/modules/$(KVER)/{{ modulename }}.ko
+driver: staging/lib/modules/$(KVER)/{{ modulename }}.ko staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo
 	@true
-
+{% else %}
+driver: staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo
+	@true
 {% endif %}
 
 clean:
