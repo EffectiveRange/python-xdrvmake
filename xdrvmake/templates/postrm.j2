@@ -19,8 +19,10 @@ case "${1:-}" in
     fi
 {%- if not dts_only %}
     log "Removing module autoload for {{ modulename }} ..."
-    if [ -f /etc/modules ]; then
-      sed -ri '/^[[:space:]]*{{ modulename }}([[:space:]]|$)/d' /etc/modules
+    MODULES_LOAD_CONF="/etc/modules-load.d/{{ project }}.conf"
+    if [ -f "$MODULES_LOAD_CONF" ]; then
+      rm -f -- "$MODULES_LOAD_CONF"
+      log "Removed $MODULES_LOAD_CONF"
     fi
 {%- endif %}
 {%- if blacklist %}

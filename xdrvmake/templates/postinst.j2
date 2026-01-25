@@ -133,10 +133,11 @@ case "${1:-}" in
     fi
     {% endif %}
     {% if not dts_only %}
-    if [[ -z "$(grep {{ modulename }} /etc/modules)"  ]];
-    then 
-        log "Adding {{ modulename }} to /etc/modules ..."
-        echo '{{ modulename }}' >> /etc/modules
+    MODULES_LOAD_CONF="/etc/modules-load.d/{{ project }}.conf"
+    if [ ! -f "$MODULES_LOAD_CONF" ] || ! grep -q "^{{ modulename }}$" "$MODULES_LOAD_CONF" 2>/dev/null; then
+        log "Adding {{ modulename }} to $MODULES_LOAD_CONF ..."
+        mkdir -p /etc/modules-load.d
+        echo '{{ modulename }}' > "$MODULES_LOAD_CONF"
         depmod || true
     fi
     log "Please add 'dtoverlay={{ project }}' if needed, then reboot ..."
