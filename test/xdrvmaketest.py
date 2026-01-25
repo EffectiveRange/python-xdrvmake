@@ -373,8 +373,8 @@ class TestBuilderUtils(unittest.TestCase):
 
         called = []
 
-        def fake_exec_make(args, kernel_ver, target):
-            called.append((kernel_ver, target))
+        def fake_exec_make(args, target):
+            called.append(target)
 
         # Patch exec_make
         import xdrvmake.builder
@@ -383,13 +383,70 @@ class TestBuilderUtils(unittest.TestCase):
         xdrvmake.builder.exec_make = fake_exec_make
 
         try:
-            build_driver(argparse.Namespace(kernel_ver=["v1", "v2", "v3"]))
-            # Should call driver for v1, v2 and all for v3
-            self.assertEqual(
-                called, [("v1", "driver"), ("v2", "driver"), ("v3", "all")]
-            )
+            build_driver(argparse.Namespace(build="/test"))
+            # Should call make all target (Makefile handles per-version builds)
+            self.assertEqual(called, ["all"])
         finally:
             xdrvmake.builder.exec_make = old_exec_make
+
+    def test_parallel_build_args_parsing(self):
+        import sys
+        import os
+        from xdrvmake.builder import get_args
+
+        old_argv = sys.argv
+        try:
+            # Test with -j flag
+            sys.argv = ["prog", "/tmp/project", "-j", "4"]
+            args = get_args()
+            self.assertEqual(args.jobs, 4)
+
+            # Test with --jobs flag
+            sys.argv = ["prog", "/tmp/project", "--jobs", "8"]
+            args = get_args()
+            self.assertEqual(args.jobs, 8)
+
+            # Test default (no -j flag) - should be number of CPUs
+            sys.argv = ["prog", "/tmp/project"]
+            args = get_args()
+            self.assertEqual(args.jobs, os.cpu_count() or 1)
+        finally:
+            sys.argv = old_argv
+
+    def test_exec_make_with_parallel_jobs(self):
+        from xdrvmake.builder import exec_make
+        import xdrvmake.builder
+
+        called_cmds = []
+
+        def fake_exec_command(cmd):
+            called_cmds.append(cmd)
+            return ""
+
+        old_exec_command = xdrvmake.builder.exec_command
+        xdrvmake.builder.exec_command = fake_exec_command
+
+        try:
+            # Test with jobs=1 (no -j flag)
+            args = argparse.Namespace(build="/test/build", jobs=1)
+            exec_make(args, "all")
+            self.assertEqual(called_cmds[-1], ["make", "-C", "/test/build", "all"])
+
+            # Test with jobs=4 (should add -j 4)
+            args = argparse.Namespace(build="/test/build", jobs=4)
+            exec_make(args, "all")
+            self.assertEqual(
+                called_cmds[-1], ["make", "-C", "/test/build", "-j", "4", "all"]
+            )
+
+            # Test with jobs=8
+            args = argparse.Namespace(build="/test/build", jobs=8)
+            exec_make(args, "driver")
+            self.assertEqual(
+                called_cmds[-1], ["make", "-C", "/test/build", "-j", "8", "driver"]
+            )
+        finally:
+            xdrvmake.builder.exec_command = old_exec_command
 
     def test_install_kernel_headers_and_load_manifest(self):
         import tempfile
@@ -527,6 +584,10 @@ class TestBuilderUtils(unittest.TestCase):
                 ("linux-image-testproj", "1:6.12.62+rpt-testproj"),
                 ("linux-headers-testproj", "1:6.12.62+rpt-testproj"),
             ],
+            "kernel_versions": [
+                "6.12.34+rpt-testproj",
+                "6.12.62+rpt-testproj",
+            ],
         }
         with tempfile.TemporaryDirectory() as tmp:
             old = os.getcwd()
@@ -540,6 +601,152 @@ class TestBuilderUtils(unittest.TestCase):
                 self.assertIn("arm64", content)
             finally:
                 os.chdir(old)
+
+    def test_makefile_full_driver_with_version_targets(self):
+        import tempfile
+        import os
+        from xdrvmake.builder import render_makefile
+
+        data = {
+            "project": "mydriver",
+            "modulename": "mymod",
+            "sourcedir": "src",
+            "kbuild_flags": "",
+            "maintainer": "test@example.com",
+            "description": "Test driver",
+            "version": "1.0.0",
+            "architecture": "arm64",
+            "dts_only": False,
+            "blacklist": None,
+            "public_header": None,
+            "min_supported": [("linux-image-rpi-v8", "1:6.12.34+rpt-rpi-v8")],
+            "max_supported": [("linux-image-rpi-v8", "1:6.12.62+rpt-rpi-v8")],
+            "kernel_versions": [
+                "6.12.34+rpt-rpi-v8",
+                "6.12.62+rpt-rpi-v8",
+                "6.6.73+rpt-rpi-v8",
+            ],
+            "projectroot": "/test/project",
+        }
+
+        makefile = render_makefile(data)
+
+        # Verify version-specific driver targets exist
+        self.assertIn("driver-6.12.34+rpt-rpi-v8:", makefile)
+        self.assertIn("driver-6.12.62+rpt-rpi-v8:", makefile)
+        self.assertIn("driver-6.6.73+rpt-rpi-v8:", makefile)
+
+        # Verify version-specific quickdeploy targets exist (not dts_only)
+        self.assertIn("quickdeploy-6.12.34+rpt-rpi-v8:", makefile)
+        self.assertIn("quickdeploy-6.12.62+rpt-rpi-v8:", makefile)
+        self.assertIn("quickdeploy-6.6.73+rpt-rpi-v8:", makefile)
+
+        # Verify quickdeploy has correct dependencies and commands
+        self.assertIn("quickdeploy-6.12.34+rpt-rpi-v8: driver-6.12.34+rpt-rpi-v8", makefile)
+        self.assertIn("scp staging/lib/modules/6.12.34+rpt-rpi-v8/mymod.ko", makefile)
+        self.assertIn("sudo rmmod mymod", makefile)
+        self.assertIn("sudo modprobe mymod", makefile)
+
+        # Verify aggregate all-drivers target
+        self.assertIn("all-drivers:", makefile)
+        self.assertIn("driver-6.12.34+rpt-rpi-v8", makefile)
+        self.assertIn("driver-6.12.62+rpt-rpi-v8", makefile)
+        self.assertIn("driver-6.6.73+rpt-rpi-v8", makefile)
+
+        # Verify .ko file targets
+        self.assertIn("staging/lib/modules/6.12.34+rpt-rpi-v8/mymod.ko:", makefile)
+        self.assertIn("staging/lib/modules/6.12.62+rpt-rpi-v8/mymod.ko:", makefile)
+        self.assertIn("staging/lib/modules/6.6.73+rpt-rpi-v8/mymod.ko:", makefile)
+
+        # Verify unique temp build directories per kernel version (prevents race conditions)
+        self.assertIn("/tmp/drv-mydriver-6.12.34+rpt-rpi-v8", makefile)
+        self.assertIn("/tmp/drv-mydriver-6.12.62+rpt-rpi-v8", makefile)
+        self.assertIn("/tmp/drv-mydriver-6.6.73+rpt-rpi-v8", makefile)
+        # Ensure no shared temp directory
+        self.assertNotIn("rsync --delete -r  /test/project/src/ /tmp/drv-mydriver\n", makefile)
+        self.assertNotIn("schroot -c buildroot -u root -d /tmp/drv-mydriver --", makefile)
+
+        # Verify DTBO targets
+        self.assertIn("staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/mydriver.dtbo:", makefile)
+        self.assertIn("staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/mydriver.dtbo:", makefile)
+
+        # Verify .PHONY contains all targets
+        self.assertIn(".PHONY:", makefile)
+        # Check that PHONY line has the driver targets
+        phony_lines = [line for line in makefile.split('\n') if line.startswith('.PHONY:')]
+        self.assertTrue(len(phony_lines) > 0)
+        phony_content = ' '.join(phony_lines)
+        self.assertIn("driver-6.12.34+rpt-rpi-v8", phony_content)
+        self.assertIn("quickdeploy-6.12.34+rpt-rpi-v8", phony_content)
+        self.assertIn("all-drivers", phony_content)
+
+        # Verify no generic KVER variable targets
+        self.assertNotIn("KVER ?=", makefile)
+        self.assertNotIn("driver: staging/lib/modules/$(KVER)", makefile)
+
+        # Verify kernel version list comment
+        self.assertIn("KERNEL_VERSIONS = 6.12.34+rpt-rpi-v8 6.12.62+rpt-rpi-v8 6.6.73+rpt-rpi-v8", makefile)
+
+    def test_makefile_dts_only_no_quickdeploy(self):
+        import tempfile
+        import os
+        from xdrvmake.builder import render_makefile
+
+        data = {
+            "project": "myoverlay",
+            "modulename": None,  # No module for dts_only
+            "sourcedir": "src",
+            "kbuild_flags": "",
+            "maintainer": "test@example.com",
+            "description": "Test overlay",
+            "version": "1.0.0",
+            "architecture": "arm64",
+            "dts_only": True,  # DTS only mode
+            "blacklist": None,
+            "public_header": None,
+            "min_supported": [("linux-image-rpi-v8", "1:6.12.34+rpt-rpi-v8")],
+            "max_supported": [("linux-image-rpi-v8", "1:6.12.62+rpt-rpi-v8")],
+            "kernel_versions": [
+                "6.12.34+rpt-rpi-v8",
+                "6.12.62+rpt-rpi-v8",
+            ],
+            "projectroot": "/test/project",
+        }
+
+        makefile = render_makefile(data)
+
+        # Verify version-specific driver targets exist
+        self.assertIn("driver-6.12.34+rpt-rpi-v8:", makefile)
+        self.assertIn("driver-6.12.62+rpt-rpi-v8:", makefile)
+
+        # Verify NO quickdeploy targets (dts_only mode)
+        self.assertNotIn("quickdeploy-6.12.34+rpt-rpi-v8:", makefile)
+        self.assertNotIn("quickdeploy-6.12.62+rpt-rpi-v8:", makefile)
+        self.assertNotIn("rmmod", makefile)
+        self.assertNotIn("modprobe", makefile)
+
+        # Verify NO .ko file targets (dts_only)
+        self.assertNotIn("staging/lib/modules/", makefile)
+        self.assertNotIn(".ko:", makefile)
+
+        # Verify DTBO targets still exist
+        self.assertIn("staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo:", makefile)
+        self.assertIn("staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/myoverlay.dtbo:", makefile)
+
+        # Verify driver targets depend only on DTBO (not .ko)
+        self.assertIn("driver-6.12.34+rpt-rpi-v8: staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo", makefile)
+
+        # Verify aggregate all-drivers target
+        self.assertIn("all-drivers:", makefile)
+        self.assertIn("driver-6.12.34+rpt-rpi-v8", makefile)
+        self.assertIn("driver-6.12.62+rpt-rpi-v8", makefile)
+
+        # Verify .PHONY does NOT contain quickdeploy targets
+        phony_lines = [line for line in makefile.split('\n') if line.startswith('.PHONY:')]
+        self.assertTrue(len(phony_lines) > 0)
+        phony_content = ' '.join(phony_lines)
+        self.assertIn("driver-6.12.34+rpt-rpi-v8", phony_content)
+        self.assertNotIn("quickdeploy", phony_content)
 
 
 if __name__ == "__main__":

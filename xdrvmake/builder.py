@@ -102,6 +102,13 @@ def get_args():
         default=3,
         help="number of last N kernel versions to install",
     )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=os.cpu_count() or 1,
+        help="number of parallel jobs for make (pass to make -j)",
+    )
     parsed = parser.parse_args()
     chrootname = pathlib.Path(parsed.chroot_root).name
     pvars = vars(parsed)
@@ -144,6 +151,7 @@ def set_globals(tmpl: jinja2.Template, data: dict) -> jinja2.Template:
     tmpl.globals["public_header"] = data.get("public_header", None)
     tmpl.globals["min_supported"] = data["min_supported"]
     tmpl.globals["max_supported"] = data["max_supported"]
+    tmpl.globals["kernel_versions"] = data.get("kernel_versions", [])
     return tmpl
 
 
@@ -177,15 +185,7 @@ def get_kernel_vers(args: argparse.Namespace) -> list[str]:
 
 
 def build_driver(args: argparse.Namespace) -> None:
-    kernel_vers = get_kernel_vers(args)
-    if not kernel_vers:
-        raise ValueError("No kernel versions found")
-    start_kernels = kernel_vers[0:-1]
-    end_kernel = kernel_vers[-1:]
-    for kernel_ver in start_kernels:
-        exec_make(args, kernel_ver, "driver")
-    for kernel_ver in end_kernel:
-        exec_make(args, kernel_ver, "all")
+    exec_make(args, "all")
 
 
 def exec_command(cmd: list[str]) -> str:
@@ -208,8 +208,11 @@ def exec_command(cmd: list[str]) -> str:
     return "\n".join(lines)
 
 
-def exec_make(args: argparse.Namespace, kernel_ver: str, target: str) -> str:
-    cmd = ["make", "-C", args.build, target, f"KVER={kernel_ver}"]
+def exec_make(args: argparse.Namespace, target: str) -> str:
+    cmd = ["make", "-C", args.build]
+    if args.jobs > 1:
+        cmd.extend(["-j", str(args.jobs)])
+    cmd.append(target)
     return exec_command(cmd)
 
 
@@ -270,14 +273,17 @@ def compute_kernel_versions_to_install(
 def load_manifest_data(data: dict, versions: dict) -> None:
     min_supported = []
     max_supported = []
+    kernel_versions = []
     for plat, vers in versions.items():
         vers.sort(key=semver_key)
         min_supported.append((f"linux-image-{plat}", f"1:{vers[0]}"))
         min_supported.append((f"linux-headers-{plat}", f"1:{vers[0]}"))
         max_supported.append((f"linux-image-{plat}", f"1:{vers[-1]}"))
         max_supported.append((f"linux-headers-{plat}", f"1:{vers[-1]}"))
+        kernel_versions.extend(vers)
     data["min_supported"] = min_supported
     data["max_supported"] = max_supported
+    data["kernel_versions"] = kernel_versions
 
 
 def load_manifest(data: dict) -> None:

@@ -1,15 +1,15 @@
 VERSION = $(shell grep Version: staging/DEBIAN/control | cut -d' ' -f2)
-# TODO: build module for all kernel versions
-KVER ?= 6.1.21+
 TARGET ?=  $(error TARGET not specified for deploy )
 DISTRO = $(shell grep VERSION_CODENAME= /home/crossbuilder/target/target | cut -d'=' -f2)
 ARCH = {{ architecture }}
-KBASEVER = $(shell echo "$(KVER)" | cut -d'-' -f1)
+
+# Kernel versions to build
+KERNEL_VERSIONS = {{ kernel_versions | join(' ') }}
 
 all: {{ project }}_$(VERSION)-1_$(ARCH).deb
 	@true
 
-{{ project }}_$(VERSION)-1_$(ARCH).deb : driver staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
+{{ project }}_$(VERSION)-1_$(ARCH).deb : all-drivers staging/DEBIAN/* {% if public_header %} staging/usr/include/{{ public_header }} {% endif %}
 	dpkg-deb --root-owner-group --build staging {{ project }}_$(VERSION)-1_$(ARCH).deb
 
 {% if public_header %}
@@ -18,34 +18,52 @@ staging/usr/include/{{ public_header }}:  {{projectroot}}/{{ sourcedir }}/{{ pub
 	cp -vf {{projectroot}}/{{ sourcedir}}/{{ public_header }} staging/usr/include/
 {% endif %}
 
-{% if not dts_only %}
-staging/lib/modules/$(KVER)/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile
-	mkdir -p staging/lib/modules/$(KVER)/
-	rsync --delete -r  {{ projectroot }}/{{ sourcedir }}/ /tmp/drv-{{ project }}
-	schroot -c buildroot -u root -d /tmp/drv-{{ project }} -- make KVER=$(KVER) {{ kbuild_flags }}
-	cp /tmp/drv-{{ project }}/{{ modulename }}.ko staging/lib/modules/$(KVER)/{{ modulename }}.ko
+# Per-kernel version targets
+{% for kver in kernel_versions %}
+{%- set kbasever = kver.split('-')[0] %}
 
-driver: staging/lib/modules/$(KVER)/{{ modulename }}.ko staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo
+{% if not dts_only %}
+staging/lib/modules/{{ kver }}/{{ modulename }}.ko: {{projectroot}}/{{ sourcedir }}/*.c {{projectroot}}/{{ sourcedir }}/*.h {{projectroot}}/{{ sourcedir }}/Makefile
+	mkdir -p staging/lib/modules/{{ kver }}/
+	rsync --delete -r  {{ projectroot }}/{{ sourcedir }}/ /tmp/drv-{{ project }}-{{ kver }}
+	schroot -c buildroot -u root -d /tmp/drv-{{ project }}-{{ kver }} -- make KVER={{ kver }} {{ kbuild_flags }}
+	cp /tmp/drv-{{ project }}-{{ kver }}/{{ modulename }}.ko staging/lib/modules/{{ kver }}/{{ modulename }}.ko
+
+{% endif %}
+{{ project }}-{{ kver }}.dts.pre: {{projectroot}}/{{ project }}.dts
+	if [ "$(DISTRO)" = "bullseye" ]; then \
+		cpp -nostdinc -undef -x assembler-with-cpp -I/var/chroot/buildroot/usr/src/linux-headers-{{ kver }}/include -o {{ project }}-{{ kver }}.dts.pre {{projectroot}}/{{ project }}.dts ;\
+	else \
+		KHDR_DIR=`ls -d1 /var/chroot/buildroot/usr/src/*{{ kbasever }}*-common-rpi`; \
+		cpp -nostdinc -undef -x assembler-with-cpp -I$${KHDR_DIR}/include -I/var/chroot/buildroot/usr/src/linux-headers-{{ kver }}/include -o {{ project }}-{{ kver }}.dts.pre {{projectroot}}/{{ project }}.dts ;\
+	fi
+
+staging/usr/lib/er-overlays/{{ kver }}/{{ project }}.dtbo: {{ project }}-{{ kver }}.dts.pre
+	mkdir -p staging/usr/lib/er-overlays/{{ kver }}
+	dtc  -I dts -O dtb -o staging/usr/lib/er-overlays/{{ kver }}/{{ project }}.dtbo {{ project }}-{{ kver }}.dts.pre
+
+{% if not dts_only %}
+driver-{{ kver }}: staging/lib/modules/{{ kver }}/{{ modulename }}.ko staging/usr/lib/er-overlays/{{ kver }}/{{ project }}.dtbo
 	@true
+
+quickdeploy-{{ kver }}: driver-{{ kver }}
+	scp staging/lib/modules/{{ kver }}/{{ modulename }}.ko $(TARGET):/tmp/
+	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo rmmod {{ modulename }} || true"
+	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo cp /tmp/{{ modulename }}.ko /lib/modules/{{ kver }}/
+	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo modprobe {{ modulename }} || true"
 {% else %}
-driver: staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo
+driver-{{ kver }}: staging/usr/lib/er-overlays/{{ kver }}/{{ project }}.dtbo
 	@true
 {% endif %}
 
+{% endfor %}
+
+# Aggregate target for all drivers
+all-drivers: {% for kver in kernel_versions %}driver-{{ kver }} {% endfor %}
+	@true
+
 clean:
 	rm -vrf staging/boot/ staging/lib/ staging/usr/ {{ project }}-*.dts.pre {{ project }}_*.deb
-
-{{ project }}-$(KVER).dts.pre: {{projectroot}}/{{ project }}.dts
-	if [ "$(DISTRO)" = "bullseye" ]; then \
-		cpp -nostdinc -undef -x assembler-with-cpp -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}-$(KVER).dts.pre {{projectroot}}/{{ project }}.dts ;\
-	else \
-		KHDR_DIR=`ls -d1 /var/chroot/buildroot/usr/src/*$(KBASEVER)*-common-rpi`; \
-		cpp -nostdinc -undef -x assembler-with-cpp -I$${KHDR_DIR}/include -I/var/chroot/buildroot/usr/src/linux-headers-$(KVER)/include -o {{ project }}-$(KVER).dts.pre {{projectroot}}/{{ project }}.dts ;\
-	fi
-
-staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo: {{ project }}-$(KVER).dts.pre
-	mkdir -p staging/usr/lib/er-overlays/$(KVER)
-	dtc  -I dts -O dtb -o staging/usr/lib/er-overlays/$(KVER)/{{ project }}.dtbo {{ project }}-$(KVER).dts.pre
 
 deploy: all
 	rsync -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" -avhz --progress {{ project }}_$(VERSION)-1_$(ARCH).deb $(TARGET):/tmp/
@@ -53,15 +71,4 @@ deploy: all
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo sed -ri '/^\s*dtoverlay={{ project }}/d' /boot/config.txt
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "echo 'dtoverlay={{ project }}' | sudo tee -a /boot/config.txt"
 
-{% if not dts_only %}
-
-quickdeploy: driver
-	scp staging/lib/modules/$(KVER)/{{ modulename }}.ko $(TARGET):/tmp/
-	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo rmmod {{ modulename }} || true"
-	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- sudo cp /tmp/{{ modulename }}.ko /lib/modules/$(KVER)/
-	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $(TARGET) -- "sudo modprobe {{ modulename }} || true"
-
-{% endif %}
-
-
-.PHONY: clean all deploy quickdeploy driver
+.PHONY: clean all deploy all-drivers {% for kver in kernel_versions %}driver-{{ kver }} {% if not dts_only %}quickdeploy-{{ kver }} {% endif %}{% endfor %}
