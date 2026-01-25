@@ -127,7 +127,7 @@ case "${1:-}" in
   configure|triggered)
     select_and_activate
     {% if blacklist %}
-    if [[ ! -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf ]]
+    if [ ! -f /etc/modprobe.d/blacklist-{{ blacklist }}.conf ]
     then
         log "blacklist {{ blacklist }}" > /etc/modprobe.d/blacklist-{{ blacklist }}.conf 
     fi
