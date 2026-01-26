@@ -1,12 +1,11 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools >= 61.0", "setuptools-scm >= 8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cross_driver_configurator"
 description = "Generating GNU Make files for building out-of-tree kernel modules using the Effective Range devcontainers"
-# dynamic = ["version"]
-version = "0.1.0"
+dynamic = ["version"]
 dependencies = ["Jinja2","pyyaml","setuptools","python-dotenv","filelock"]
 authors = [
   {name = "Effective Range Kft", email = "info@effective-range.com"},
@@ -27,7 +26,7 @@ dev = [
   "black",
 ]
 
-# [tool.setuptools_scm]
+[tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
 include = ["xdrvmake*"]
