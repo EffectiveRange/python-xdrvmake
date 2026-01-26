@@ -603,8 +603,6 @@ class TestBuilderUtils(unittest.TestCase):
                 os.chdir(old)
 
     def test_makefile_full_driver_with_version_targets(self):
-        import tempfile
-        import os
         from xdrvmake.builder import render_makefile
 
         data = {
@@ -642,7 +640,9 @@ class TestBuilderUtils(unittest.TestCase):
         self.assertIn("quickdeploy-6.6.73+rpt-rpi-v8:", makefile)
 
         # Verify quickdeploy has correct dependencies and commands
-        self.assertIn("quickdeploy-6.12.34+rpt-rpi-v8: driver-6.12.34+rpt-rpi-v8", makefile)
+        self.assertIn(
+            "quickdeploy-6.12.34+rpt-rpi-v8: driver-6.12.34+rpt-rpi-v8", makefile
+        )
         self.assertIn("scp staging/lib/modules/6.12.34+rpt-rpi-v8/mymod.ko", makefile)
         self.assertIn("sudo rmmod mymod", makefile)
         self.assertIn("sudo modprobe mymod", makefile)
@@ -663,19 +663,29 @@ class TestBuilderUtils(unittest.TestCase):
         self.assertIn("/tmp/drv-mydriver-6.12.62+rpt-rpi-v8", makefile)
         self.assertIn("/tmp/drv-mydriver-6.6.73+rpt-rpi-v8", makefile)
         # Ensure no shared temp directory
-        self.assertNotIn("rsync --delete -r  /test/project/src/ /tmp/drv-mydriver\n", makefile)
-        self.assertNotIn("schroot -c buildroot -u root -d /tmp/drv-mydriver --", makefile)
+        self.assertNotIn(
+            "rsync --delete -r  /test/project/src/ /tmp/drv-mydriver\n", makefile
+        )
+        self.assertNotIn(
+            "schroot -c buildroot -u root -d /tmp/drv-mydriver --", makefile
+        )
 
         # Verify DTBO targets
-        self.assertIn("staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/mydriver.dtbo:", makefile)
-        self.assertIn("staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/mydriver.dtbo:", makefile)
+        self.assertIn(
+            "staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/mydriver.dtbo:", makefile
+        )
+        self.assertIn(
+            "staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/mydriver.dtbo:", makefile
+        )
 
         # Verify .PHONY contains all targets
         self.assertIn(".PHONY:", makefile)
         # Check that PHONY line has the driver targets
-        phony_lines = [line for line in makefile.split('\n') if line.startswith('.PHONY:')]
+        phony_lines = [
+            line for line in makefile.split("\n") if line.startswith(".PHONY:")
+        ]
         self.assertTrue(len(phony_lines) > 0)
-        phony_content = ' '.join(phony_lines)
+        phony_content = " ".join(phony_lines)
         self.assertIn("driver-6.12.34+rpt-rpi-v8", phony_content)
         self.assertIn("quickdeploy-6.12.34+rpt-rpi-v8", phony_content)
         self.assertIn("all-drivers", phony_content)
@@ -685,11 +695,12 @@ class TestBuilderUtils(unittest.TestCase):
         self.assertNotIn("driver: staging/lib/modules/$(KVER)", makefile)
 
         # Verify kernel version list comment
-        self.assertIn("KERNEL_VERSIONS = 6.12.34+rpt-rpi-v8 6.12.62+rpt-rpi-v8 6.6.73+rpt-rpi-v8", makefile)
+        self.assertIn(
+            "KERNEL_VERSIONS = 6.12.34+rpt-rpi-v8 6.12.62+rpt-rpi-v8 6.6.73+rpt-rpi-v8",
+            makefile,
+        )
 
     def test_makefile_dts_only_no_quickdeploy(self):
-        import tempfile
-        import os
         from xdrvmake.builder import render_makefile
 
         data = {
@@ -730,11 +741,18 @@ class TestBuilderUtils(unittest.TestCase):
         self.assertNotIn(".ko:", makefile)
 
         # Verify DTBO targets still exist
-        self.assertIn("staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo:", makefile)
-        self.assertIn("staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/myoverlay.dtbo:", makefile)
+        self.assertIn(
+            "staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo:", makefile
+        )
+        self.assertIn(
+            "staging/usr/lib/er-overlays/6.12.62+rpt-rpi-v8/myoverlay.dtbo:", makefile
+        )
 
         # Verify driver targets depend only on DTBO (not .ko)
-        self.assertIn("driver-6.12.34+rpt-rpi-v8: staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo", makefile)
+        self.assertIn(
+            "driver-6.12.34+rpt-rpi-v8: staging/usr/lib/er-overlays/6.12.34+rpt-rpi-v8/myoverlay.dtbo",
+            makefile,
+        )
 
         # Verify aggregate all-drivers target
         self.assertIn("all-drivers:", makefile)
@@ -742,9 +760,11 @@ class TestBuilderUtils(unittest.TestCase):
         self.assertIn("driver-6.12.62+rpt-rpi-v8", makefile)
 
         # Verify .PHONY does NOT contain quickdeploy targets
-        phony_lines = [line for line in makefile.split('\n') if line.startswith('.PHONY:')]
+        phony_lines = [
+            line for line in makefile.split("\n") if line.startswith(".PHONY:")
+        ]
         self.assertTrue(len(phony_lines) > 0)
-        phony_content = ' '.join(phony_lines)
+        phony_content = " ".join(phony_lines)
         self.assertIn("driver-6.12.34+rpt-rpi-v8", phony_content)
         self.assertNotIn("quickdeploy", phony_content)
 
